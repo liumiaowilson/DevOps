@@ -22,8 +22,14 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-if [ -z $1 ]; then
-    sfdx force:org:open -u $OrgAlias
+alias=$1
+
+if [ -z $alias ] && [ $OrgAlias != 'Wild' ]; then
+    alias=$OrgAlias
+fi
+
+if [ -z $alias ]; then
+    sfdx force:org:open
 else
-    sfdx force:org:open -u $1
+    sfdx force:org:open -u $alias
 fi

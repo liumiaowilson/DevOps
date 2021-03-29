@@ -87,6 +87,10 @@ _env() {
         OrgAlias=`echo $RootDir | sed 's/.*\/\(.*\)/\1/'`
     fi
 
+    if [ -d $RootDir/.sfdx ]; then
+        OrgAlias=`cat ${RootDir}/.sfdx/sfdx-config.json | grep defaultusername | cut -b 25- | sed 's/.$//'`
+    fi
+
     export OrgAlias
     export RootDir
 }

@@ -1,0 +1,13 @@
+pattern=$1
+
+if [ -z $pattern ]; then
+    echo 'No file pattern is provided'
+    exit 0
+fi
+
+if [ -z $2 ]; then
+    newState=u
+else
+    newState=$2
+fi
+node $BinDir/setState.js $RootDir "$pattern" $newState

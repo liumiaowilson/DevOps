@@ -16,7 +16,9 @@ exec('sfdx force:org:display', (error, stdout, stderr) => {
     const json2 = JSON.parse(fs.readFileSync(sourcePathInfosFile, 'utf8'));
     fs.unlinkSync(sourcePathInfosFile);
 
-    exec('sfdx force:source:status', (error, stdout, stderr) => {
+    exec('sfdx force:source:status', {
+        maxBuffer: 1024 * 1024,
+    }, (error, stdout, stderr) => {
         if(error) {
             console.log(error.message);
         }

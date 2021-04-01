@@ -1,1 +1,6 @@
+if [ -z $1 ]; then
+    echo 'Metadata pattern is required'
+    exit 0
+fi
+
 sfdx force:source:retrieve -m "$1"

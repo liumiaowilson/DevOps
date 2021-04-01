@@ -5,4 +5,4 @@ if [ -z $pattern ]; then
     exit 0
 fi
 
-node $BinDir/removeTracking.js $RootDir "$pattern"
+node $BinDir/js/removeTracking.js $RootDir "$pattern"

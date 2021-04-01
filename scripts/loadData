@@ -1,0 +1,13 @@
+if [ -z $1 ]; then
+    echo 'Data directory is required'
+    exit 0
+fi
+
+sfdx force:user:permset:assign --permsetname Administrator
+sfdx force:apex:execute -f $BinDir/workspaces/practifi/enable_trigger_settings.apex
+sfdx texei:data:import --inputdir ./data/texei/RefData
+sfdx texei:data:import --inputdir ./data/texei/$1
+sfdx force:apex:execute -f ./scripts/apex/insertHousehold1.apex
+sfdx force:apex:execute -f ./scripts/apex/insertHousehold2.apex
+sfdx force:apex:execute -f ./scripts/apex/insertHousehold3.apex
+sfdx force:apex:execute -f ./scripts/apex/insertHousehold4.apex

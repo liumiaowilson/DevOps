@@ -10,4 +10,4 @@ if [ -z $2 ]; then
 else
     newState=$2
 fi
-node $BinDir/setState.js $RootDir "$pattern" $newState
+node $BinDir/js/setState.js $RootDir "$pattern" $newState

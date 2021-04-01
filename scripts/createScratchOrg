@@ -3,4 +3,4 @@ if [ -z $1 ]; then
     exit 0
 fi
 
-sfdx force:org:create -f config/regular-scratch-def.json --setalias $1 --durationdays 30 --setdefaultusername --json --loglevel fatal
+sfdx force:org:create -f $BinDir/workspaces/practifi/scratch-def.json --setalias $1 --durationdays 30 --setdefaultusername --json --loglevel fatal

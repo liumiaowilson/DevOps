@@ -1,0 +1,32 @@
+{
+  "orgName": "practifiDev",
+  "edition": "Developer",
+  "hasSampleData": false,
+  "features": [
+    "API",
+    "AuthorApex",
+    "Communities",
+    "DebugApex",
+    "PersonAccounts",
+    "ForceComPlatform"
+  ],
+  "settings": {
+    "accountSettings":{
+      "enableAccountTeams":true,
+      "showViewHierarchyLink":false
+    },
+    "accountIntelligence":{
+      "enableAutomatedAccountFields":true,
+      "enableNewsStories":true
+    },
+    "communitiesSettings": {
+      "enableNetworksEnabled": true
+    },
+    "enhancedNotesSettings":{
+      "enableEnhancedNotes":true
+    },
+    "mobileSettings":{
+      "enableS1EncryptedStoragePref2":false
+    }
+  }
+}

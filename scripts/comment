@@ -1,0 +1,10 @@
+alias=$1
+shift
+comment=$@
+
+if [ -z $alias ]; then
+    echo 'No org alias is provided'
+    exit 0
+fi
+
+node $BinDir/js/comment.js $RootDir $alias "$comment"

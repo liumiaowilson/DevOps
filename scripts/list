@@ -1,1 +1,3 @@
 sfdx force:org:list
+
+cat $RootDir/.sfdx/comments.json

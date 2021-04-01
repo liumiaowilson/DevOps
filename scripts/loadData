@@ -5,6 +5,7 @@ fi
 
 sfdx force:user:permset:assign --permsetname Administrator
 sfdx force:apex:execute -f $BinDir/workspaces/practifi/enable_trigger_settings.apex
+sfdx force:apex:execute -f $BinDir/workspaces/practifi/enable_debug_mode.apex
 sfdx texei:data:import --inputdir ./data/texei/RefData
 sfdx texei:data:import --inputdir ./data/texei/$1
 sfdx force:apex:execute -f ./scripts/apex/insertHousehold1.apex

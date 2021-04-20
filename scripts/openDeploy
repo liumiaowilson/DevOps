@@ -1,0 +1,1 @@
+sfdx force:org:open -p /lightning/setup/DeployStatus/home

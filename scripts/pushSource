@@ -1,1 +1,1 @@
-sfdx force:source:push --json --loglevel fatal --forceoverwrite
+sfdx force:source:push --json --loglevel info --forceoverwrite

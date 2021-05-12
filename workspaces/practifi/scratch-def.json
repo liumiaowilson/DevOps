@@ -30,6 +30,9 @@
     },
     "deploymentSettings": {
       "doesSkipAsyncApexValidation": true
+    },
+    "securitySettings": {
+      "enableAdminLoginAsAnyUser": true
     }
   }
 }

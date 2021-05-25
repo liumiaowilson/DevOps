@@ -31,6 +31,14 @@
     "deploymentSettings": {
       "doesSkipAsyncApexValidation": true
     },
+    "networkAccess": {
+        "ipRanges": [
+            {
+                "start": "49.0.0.0",
+                "end": "49.255.255.255"
+            }
+        ]
+    },
     "securitySettings": {
       "enableAdminLoginAsAnyUser": true
     }

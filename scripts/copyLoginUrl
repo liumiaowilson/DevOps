@@ -1,0 +1,14 @@
+if [ -z $1 ]; then
+    echo 'No org alias is provided'
+    exit 0
+fi
+
+info=`sfdx force:user:display --targetusername $1 --json`
+
+instanceUrl=`echo $info | jq -r '.result.instanceUrl'`
+accessToken=`echo $info | jq -r '.result.accessToken'`
+
+loginUrl="$instanceUrl/secur/frontdoor.jsp?sid=$accessToken"
+
+echo $loginUrl | pbcopy
+echo $loginUrl

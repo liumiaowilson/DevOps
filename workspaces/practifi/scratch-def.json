@@ -8,7 +8,8 @@
     "Communities",
     "DebugApex",
     "PersonAccounts",
-    "ForceComPlatform"
+    "ForceComPlatform",
+    "SharedActivities"
   ],
   "settings": {
     "accountSettings":{

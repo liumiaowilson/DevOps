@@ -1,0 +1,11 @@
+alias=$1
+
+if [ -z $alias ] && [ $OrgAlias != 'Wild' ]; then
+    alias=$OrgAlias
+fi
+
+if [ -z $alias ]; then
+    open https://mypim.lightning.force.com/lightning/cmp/c__console
+else
+    open "https://mypim.lightning.force.com/lightning/cmp/c__console?c__source=sfdx&c__alias=$alias"
+fi

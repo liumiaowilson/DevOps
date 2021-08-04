@@ -4,6 +4,7 @@ if [ -z $1 ]; then
 fi
 
 sfdx force:user:permset:assign --permsetname Administrator
+sfdx force:user:permset:assign --permsetname Practifi_Risk_Profile_Feature
 sfdx force:apex:execute -f $BinDir/workspaces/practifi/enable_trigger_settings.apex
 sfdx force:apex:execute -f $BinDir/workspaces/practifi/enable_debug_mode.apex
 sfdx texei:data:import --inputdir ./data/texei/RefData

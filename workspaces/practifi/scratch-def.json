@@ -9,7 +9,8 @@
     "DebugApex",
     "PersonAccounts",
     "ForceComPlatform",
-    "SharedActivities"
+    "SharedActivities",
+    "AddCustomApps:30"
   ],
   "settings": {
     "accountSettings":{

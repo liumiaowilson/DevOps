@@ -10,7 +10,11 @@
     "PersonAccounts",
     "ForceComPlatform",
     "SharedActivities",
-    "AddCustomApps:30"
+    "AddCustomApps:30",
+    "AnalyticsAppEmbedded",
+    "AnalyticsAdminPerms",
+    "DevelopmentWave",
+    "EinsteinAnalyticsPlus"
   ],
   "settings": {
     "accountSettings":{

@@ -2,6 +2,7 @@
   "orgName": "practifiDev",
   "edition": "Developer",
   "hasSampleData": false,
+  "release": "Preview",
   "features": [
     "API",
     "AuthorApex",
@@ -10,11 +11,7 @@
     "PersonAccounts",
     "ForceComPlatform",
     "SharedActivities",
-    "AddCustomApps:30",
-    "AnalyticsAppEmbedded",
-    "AnalyticsAdminPerms",
-    "DevelopmentWave",
-    "EinsteinAnalyticsPlus"
+    "AddCustomApps:30"
   ],
   "settings": {
     "accountSettings":{
@@ -31,14 +28,8 @@
     "enhancedNotesSettings":{
       "enableEnhancedNotes":true
     },
-    "mobileSettings":{
-      "enableS1EncryptedStoragePref2":false
-    },
-    "deploymentSettings": {
-      "doesSkipAsyncApexValidation": true
-    },
-    "securitySettings": {
-      "enableAdminLoginAsAnyUser": true
+    "languageSettings" : {
+      "enableTranslationWorkbench": true
     }
   }
 }

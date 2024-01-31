@@ -1,0 +1,11 @@
+alias=$1
+
+if [ -z $alias ]; then
+    echo "Alias is required"
+    exit 0
+fi
+
+instanceUrl=`sfdx force:org:display -o $alias --verbose --json | jq -r .result.instanceUrl`
+accessToken=`sfdx force:org:display -o $alias --verbose --json | jq -r .result.accessToken`
+
+echo "https://mypim.lightning.force.com/lightning/cmp/c__console?c__source=session&c__instanceUrl=$instanceUrl&c__accessToken=$accessToken"

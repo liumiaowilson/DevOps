@@ -1,0 +1,4 @@
+#!/bin/sh
+alias=$1
+
+sf mypim open console -o $alias

@@ -7,5 +7,5 @@ if [ -z $alias ]; then
     exit 0
 else
     url=`sf org open -o $alias --json | jq -r .result.url`
-    python -m webbrowser $url
+    python -m webbrowser $url"&retURL=/_ui/common/apex/debug/ApexCSIPage"
 fi

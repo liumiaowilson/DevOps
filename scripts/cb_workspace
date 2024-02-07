@@ -1,0 +1,10 @@
+#!/bin/sh
+
+name=$1
+
+if [ -z $name ]; then
+    echo 'Workspace name is required'
+    exit 0
+else
+    code-server -r ~/$name
+fi

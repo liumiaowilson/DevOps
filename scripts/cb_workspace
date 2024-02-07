@@ -1,10 +1,10 @@
 #!/bin/sh
 
-name=$1
+path=$1
 
-if [ -z $name ]; then
-    echo 'Workspace name is required'
+if [ -z $path ]; then
+    echo 'Workspace path is required'
     exit 0
 else
-    code-server -r ~/$name
+    code-server -r $path
 fi

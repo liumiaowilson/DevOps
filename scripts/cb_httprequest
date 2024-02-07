@@ -1,0 +1,12 @@
+#!/bin/sh
+alias=$1
+
+if [ -z $alias ]; then
+    echo 'Alias is required'
+    exit 0
+else
+    instanceUrl=`sf org display --verbose --json -o $alias | jq -r .result.instanceUrl`
+    accessToken=`sf org display --verbose --json -o $alias | jq -r .result.accessToken`
+    url="https://mypim.lightning.force.com/lightning/n/Http_Request_Demo?c__instance_url="$instanceUrl"&c__access_token="$accessToken
+    python -m webbrowser $url
+fi

@@ -1,0 +1,11 @@
+#!/bin/sh
+
+alias=$1
+
+if [ -z $alias ]; then
+    url=`sf org open --json | jq -r .result.url`
+    python -m webbrowser $url
+else
+    url=`sf org open -o $alias --json | jq -r .result.url`
+    python -m webbrowser $url
+fi

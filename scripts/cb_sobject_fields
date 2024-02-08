@@ -1,12 +1,12 @@
 #!/bin/sh
-
+alias=$DefaultAlias
 name=$1
 
 if [ -z $name ]; then
     echo 'Object api name is required'
     exit 0
 else
-    sf sobject describe -s $name > ~/tmp.txt
+    sf sobject describe -o $alias -s $name > ~/tmp.txt
     sf mypim json table -f ~/tmp.txt -r fields -c Name:name -c Label:label -c Type:type -c Reference:referenceTo
     rm ~/tmp.txt
 fi

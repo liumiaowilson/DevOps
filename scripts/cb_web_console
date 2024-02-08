@@ -1,11 +1,5 @@
 #!/bin/sh
+alias=$DefaultAlias
 
-alias=$1
-
-if [ -z $alias ]; then
-    echo 'Alias is required'
-    exit 0
-else
-    url=`sf org open -o $alias --json | jq -r .result.url`
-    python -m webbrowser $url"&retURL=/_ui/common/apex/debug/ApexCSIPage"
-fi
+url=`sf org open -o $alias --json | jq -r .result.url`
+python -m webbrowser $url"&retURL=/_ui/common/apex/debug/ApexCSIPage"

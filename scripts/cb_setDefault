@@ -1,0 +1,10 @@
+if [ -z $1 ]; then
+    echo 'No org alias is provided'
+    exit 0
+fi
+
+sf config set target-org $1 > /dev/null 2>&1
+
+if [ $? = 1 ]; then
+    sf config set --global target-org $1
+fi

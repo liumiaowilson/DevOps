@@ -1,6 +1,0 @@
-if [ -z $1 ]; then
-    echo 'No org alias is provided'
-    exit 0
-fi
-
-sfdx force:config:set defaultusername=$1

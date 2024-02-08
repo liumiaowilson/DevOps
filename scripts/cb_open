@@ -1,11 +1,6 @@
 #!/bin/sh
 
-alias=$1
+alias=$DefaultAlias
 
-if [ -z $alias ]; then
-    echo 'Alias is required'
-    exit 0
-else
-    url=`sf org open -o $alias --json | jq -r .result.url`
-    python -m webbrowser $url
-fi
+url=`sf org open -o $alias --json | jq -r .result.url`
+python -m webbrowser $url

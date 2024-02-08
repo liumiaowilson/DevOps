@@ -1,4 +1,4 @@
 #!/bin/sh
-alias=$1
+alias=$DefaultAlias
 
 sf mypim open console -o $alias

@@ -91,6 +91,10 @@ _env() {
         OrgAlias=`cat ${RootDir}/.sfdx/sfdx-config.json | jq '.defaultusername' | sed 's/"//g'`
     fi
 
+    if [ "$1" != "dummy" ]; then
+        export DefaultAlias=`sf config get target-org --json | jq -r .result[0].value`;
+    fi
+
     export OrgAlias
     export RootDir
 }

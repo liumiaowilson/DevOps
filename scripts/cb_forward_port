@@ -1,0 +1,4 @@
+#!/bin/sh
+port=$1
+
+sf mypim forward port -p $port

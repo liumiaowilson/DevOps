@@ -93,7 +93,9 @@ _env() {
     fi
 
     if [ -d $RootDir/.sfdx ]; then
-        OrgAlias=`cat ${RootDir}/.sfdx/sfdx-config.json | jq '.defaultusername' | sed 's/"//g'`
+        if [ -f $RootDir/.sfdx/sfdx-config.json ]; then
+            OrgAlias=`cat ${RootDir}/.sfdx/sfdx-config.json | jq '.defaultusername' | sed 's/"//g'`
+        fi
     fi
 
     if [ "$1" != "dummy" ]; then

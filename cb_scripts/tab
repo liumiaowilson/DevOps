@@ -1,0 +1,10 @@
+#!/bin/sh
+
+path=$1
+
+if [ -z $path ]; then
+    echo 'Workspace path is required'
+    exit 0
+else
+    code-server $path
+fi

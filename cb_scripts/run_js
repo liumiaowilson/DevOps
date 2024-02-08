@@ -1,0 +1,4 @@
+#!/bin/sh
+alias=$DefaultAlias
+
+sf mypim run script -o $alias -f $@

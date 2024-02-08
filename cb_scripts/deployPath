@@ -1,0 +1,6 @@
+if [ -z $1 ]; then
+    echo 'Path is required'
+    exit 0
+fi
+
+sfdx force:source:deploy -p "$1"

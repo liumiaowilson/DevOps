@@ -29,7 +29,12 @@ if [ -z $BinDir ]; then
 fi
 
 export BinDir=`echo $BinDir | sed 's/\(.*\)\/.*/\1/'`
-export ScriptsDir=$BinDir/scripts
+
+if [ $SF_CONTAINER_MODE = "true" ]; then
+    export ScriptsDir=$BinDir/cb_scripts
+else
+    export ScriptsDir=$BinDir/scripts
+fi
 
 _help() {
     Command=`echo $0 | sed 's/.*\/\(.*\)/\1/'`

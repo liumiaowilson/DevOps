@@ -1,0 +1,11 @@
+#!/bin/sh
+
+remote=`git remote get-url origin | sed 's/.*@bitbucket.org:\(.*\).git/\1/'`
+
+branch=`git rev-parse --abbrev-ref HEAD`
+
+dest=`git log --pretty=format:'%D' HEAD^ | grep 'origin/' | head -n1 | sed 's@origin/@@' | sed 's@,.*@@'`
+
+url="https://bitbucket.org/$remote/pull-requests/new?source=$remote::$branch&dest=$remote::$dest"
+
+python -m webbrowser $url

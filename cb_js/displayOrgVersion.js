@@ -33,7 +33,7 @@
             items.push({ name: key, value, });
         });
 
-        context.table(items, columns);
+        context.ux.table(items, columns);
 
         return result;
     });

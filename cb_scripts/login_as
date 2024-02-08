@@ -1,0 +1,5 @@
+#!/bin/sh
+user=$1
+alias=$DefaultAlias
+
+sf mypim run script -o $alias -f ~/DevOps/cb_js/loginAs.js $user

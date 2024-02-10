@@ -1,0 +1,6 @@
+if [ -z $1 ]; then
+    echo 'Path is required'
+    exit 0
+fi
+
+sf apex run -o $DefaultAlias -f "$1" | grep USER_DEBUG

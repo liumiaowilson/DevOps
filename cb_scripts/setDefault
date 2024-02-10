@@ -4,7 +4,4 @@ if [ -z $1 ]; then
 fi
 
 sf config set target-org $1 > /dev/null 2>&1
-
-if [ $? = 1 ]; then
-    sf config set --global target-org $1
-fi
+sf config set --global target-org $1

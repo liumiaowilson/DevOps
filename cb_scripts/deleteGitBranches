@@ -1,0 +1,10 @@
+if [ -z $1 ]; then
+    echo 'File is required'
+    exit 0
+fi
+
+file=$1
+
+while read p; do
+    git branch -D "$p"
+done < $file

@@ -1,0 +1,15 @@
+userId=$1
+recordId=$2
+
+if [ -z $userId ]; then
+    echo 'User Id is required'
+    exit 0
+fi
+
+if [ -z $recordId ]; then
+    echo 'Record Id is required'
+    exit 0
+fi
+
+query="SELECT RecordId, HasReadAccess, HasEditAccess, HasDeleteAccess, HasTransferAccess, HasAllAccess, MaxAccessLevel FROM UserRecordAccess WHERE RecordId = '"$recordId"' AND UserId = '"$userId"'"
+sf data query -q "$query" -o $DefaultAlias

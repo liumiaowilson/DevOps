@@ -1,0 +1,18 @@
+userId=$1
+objectApiName=$2
+
+if [ -z $userId ]; then
+    echo 'User Id is required'
+    exit 0
+fi
+
+if [ -z $objectApiName ]; then
+    echo 'Object Api Name is required'
+    exit 0
+fi
+
+query="SELECT DurableId FROM EntityDefinition WHERE QualifiedApiName = '"$objectApiName"'"
+durableId=`sf data query -q "$query" --json | jq -r .result.records[0].DurableId`
+
+query="SELECT IsMergeable, IsUpdatable, IsActivateable, IsReadable, IsCreatable, IsEditable, IsDeletable, IsUndeletable, IsFlsUpdatable FROM UserEntityAccess WHERE EntityDefinitionId = '"$durableId"' AND UserId = '"$userId"'"
+sf data query -q "$query"

@@ -1,0 +1,27 @@
+userId=$1
+objectApiName=$2
+fieldName=$3
+
+if [ -z $userId ]; then
+    echo 'User Id is required'
+    exit 0
+fi
+
+if [ -z $objectApiName ]; then
+    echo 'Object Api Name is required'
+    exit 0
+fi
+
+if [ -z $fieldName ]; then
+    echo 'Field Name is required'
+    exit 0
+fi
+
+query="SELECT DurableId FROM EntityDefinition WHERE QualifiedApiName = '"$objectApiName"'"
+durableId=`sf data query -o $DefaultAlias -q "$query" --json | jq -r .result.records[0].DurableId`
+
+query="SELECT DurableId FROM FieldDefinition WHERE EntityDefinitionId = '"$durableId"' AND QualifiedApiName = '"$fieldName"'"
+durableId=`sf data query -o $DefaultAlias -q "$query" --json | jq -r .result.records[0].DurableId`
+
+query="SELECT IsAccessible,IsCreatable,IsUpdatable FROM UserFieldAccess WHERE DurableId = '"$durableId"."$userId"'"
+sf data query -q "$query" -o $DefaultAlias

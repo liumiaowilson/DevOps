@@ -12,7 +12,7 @@ if [ -z $objectApiName ]; then
 fi
 
 query="SELECT DurableId FROM EntityDefinition WHERE QualifiedApiName = '"$objectApiName"'"
-durableId=`sf data query -q "$query" --json | jq -r .result.records[0].DurableId`
+durableId=`sf data query -o $DefaultAlias -q "$query" --json | jq -r .result.records[0].DurableId`
 
 query="SELECT IsMergeable, IsUpdatable, IsActivateable, IsReadable, IsCreatable, IsEditable, IsDeletable, IsUndeletable, IsFlsUpdatable FROM UserEntityAccess WHERE EntityDefinitionId = '"$durableId"' AND UserId = '"$userId"'"
-sf data query -q "$query"
+sf data query -q "$query" -o $DefaultAlias

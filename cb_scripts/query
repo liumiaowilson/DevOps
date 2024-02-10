@@ -1,3 +1,3 @@
 query="$@"
 
-sf data query -q "$query"
+sf data query -q "$query" -o $DefaultAlias

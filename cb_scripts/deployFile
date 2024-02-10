@@ -1,0 +1,7 @@
+if [ -z $1 ]; then
+    echo 'File is required'
+    exit 0
+fi
+
+paths=`dev run_js ~/DevOps/cb_js/concatLinesFromFile.js $1`
+sfdx force:source:deploy -p "$paths"

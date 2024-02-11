@@ -1,0 +1,18 @@
+#!/bin/sh
+alias=$DefaultAlias
+objectApiName=$1
+fieldName=$2
+
+if [ -z $objectApiName ]; then
+    echo 'Object api name is required'
+    exit 0
+fi
+
+if [ -z $fieldName ]; then
+    echo 'Field name is required'
+    exit 0
+fi
+
+sf sobject describe -o $alias -s $objectApiName > ~/tmp.txt
+sf mypim run script -o $alias -f ~/DevOps/cb_js/pickField.js ~/tmp.txt $fieldName
+rm ~/tmp.txt

@@ -1,0 +1,8 @@
+userId=$1
+
+if [ -z $userId ]; then
+    echo 'User Id is required'
+    exit 0
+fi
+
+sf mypim run script -o $DefaultAlias -f ~/DevOps/cb_js/checkUserSetupEntity.js $userId ApexClass

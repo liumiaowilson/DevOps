@@ -79,10 +79,12 @@
                 if(mpsMap[psgcRecord.PermissionSetId]) {
                     const list = mpsgcMap[psgcRecord.PermissionSetGroupId] || [];
                     list.push(psgcRecord.PermissionSetId);
+                    mpsgcMap[psgcRecord.PermissionSetGroupId] = list;
                 }
                 else {
                     const list = psgcMap[psgcRecord.PermissionSetGroupId] || [];
                     list.push(psgcRecord.PermissionSetId);
+                    psgcMap[psgcRecord.PermissionSetGroupId] = list;
                 }
             }
 
@@ -108,23 +110,22 @@
 
             const userPerms = {};
             for(const psaRecord of psaData.records) {
-                if(psaRecord.PermissionSetId) {
-                    const ps = psMap[psaRecord.PermissionSetId];
-                    for(const psPermissionName of psPermissionNames) {
-                        if(ps[psPermissionName.name]) {
-                            const list = userPerms[psPermissionName.name] || [];
-                            list.push(ps.Name);
-                            userPerms[psPermissionName.name] = list;
-                        }
-                    }
-                }
-
                 if(psaRecord.PermissionSetGroupId) {
                     const psg = psgMap[psaRecord.PermissionSetGroupId];
                     for(const psPermissionName of psPermissionNames) {
                         if(psg[psPermissionName.name]) {
                             const list = userPerms[psPermissionName.name] || [];
                             list.push(psg.Name);
+                            userPerms[psPermissionName.name] = list;
+                        }
+                    }
+                }
+                else if(psaRecord.PermissionSetId) {
+                    const ps = psMap[psaRecord.PermissionSetId];
+                    for(const psPermissionName of psPermissionNames) {
+                        if(ps[psPermissionName.name]) {
+                            const list = userPerms[psPermissionName.name] || [];
+                            list.push(ps.Name);
                             userPerms[psPermissionName.name] = list;
                         }
                     }

@@ -9,8 +9,11 @@
     return context.fs.readFile(filePath, 'utf8').then(content => {
         const result = content.split('\n').map(line => {
             line = line.trim();
-            if(line.startsWith('M ')) {
+            if(line.startsWith('M ') || line.startsWith('A ')) {
                 return line.substring(2).trim();
+            }
+            else if(line.startsWith('R ')) {
+                return line.substring(2).split('->')[1].trim();
             }
             else if(line.startsWith('?? ')) {
                 return line.substring(3).trim();

@@ -1,0 +1,20 @@
+userId=$1
+objectApiName=$2
+fieldName=$3
+
+if [ -z $userId ]; then
+    echo 'User Id is required'
+    exit 0
+fi
+
+if [ -z $objectApiName ]; then
+    echo 'Object Api Name is required'
+    exit 0
+fi
+
+if [ -z $fieldName ]; then
+    echo 'Field Name is required'
+    exit 0
+fi
+
+sf mypim run script -o $DefaultAlias -f ~/DevOps/cb_js/checkUserFieldPermission.js $userId $objectApiName $fieldName

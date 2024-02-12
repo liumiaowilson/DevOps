@@ -1,0 +1,14 @@
+userId=$1
+objectApiName=$2
+
+if [ -z $userId ]; then
+    echo 'User Id is required'
+    exit 0
+fi
+
+if [ -z $objectApiName ]; then
+    echo 'Object Api Name is required'
+    exit 0
+fi
+
+sf mypim run script -o $DefaultAlias -f ~/DevOps/cb_js/checkUserObjectPermission.js $userId $objectApiName

@@ -1,0 +1,10 @@
+#!/bin/sh
+
+if [ -z $1 ]; then
+    echo 'Class name is required'
+fi
+
+classes=`echo "$@" |sed 's/ /,/g'`
+
+result=`sf apex run test -n $classes -o $DefaultAlias --json | jq -r .result.testRunId`
+sf apex get test -i $result -o $DefaultAlias

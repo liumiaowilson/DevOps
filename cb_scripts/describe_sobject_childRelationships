@@ -1,0 +1,12 @@
+#!/bin/sh
+alias=$DefaultAlias
+name=$1
+
+if [ -z $name ]; then
+    echo 'Object api name is required'
+    exit 0
+else
+    sf sobject describe -o $alias -s $name > ~/tmp.txt
+    sf mypim json table -f ~/tmp.txt -r childRelationships -c ChildSObject:childSObject -c Field:field -c Relationship:relationshipName
+    rm ~/tmp.txt
+fi

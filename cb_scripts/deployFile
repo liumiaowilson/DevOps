@@ -3,5 +3,5 @@ if [ -z $1 ]; then
     exit 0
 fi
 
-paths=`dev run_js ~/DevOps/cb_js/concatLinesFromFile.js $1`
+paths=`sf mypim run script -o $DefaultAlias -f ~/DevOps/cb_js/concatLinesFromFile.js $1`
 sfdx force:source:deploy -p "$paths"

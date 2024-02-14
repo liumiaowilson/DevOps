@@ -1,0 +1,10 @@
+link=$1
+
+if [ -z $link ]; then
+    echo 'Link is required'
+    exit 0
+fi
+
+alias=`cat /home/codebuilder/.sfdx/sfdx-config.json | jq -r .defaultusername`
+
+sf mypim run script -o $alias -f /home/codebuilder/DevOps/cb_js/resolveLink.js $link

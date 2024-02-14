@@ -1,1 +1,1 @@
-sf mypim run script -o $DefaultAlias -f ~/DevOps/cb_js/generateCmdPayload.js $@ | websocat ws://localhost:3710
+sf mypim run script -o $DefaultAlias -f ~/DevOps/cb_js/generateCmdPayload.js $@ | websocat ws://localhost:$REMOTE_CONTROL_PORT

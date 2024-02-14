@@ -19,10 +19,13 @@
                 usage.push('delete');
             }
 
+            const url = context.connection.instanceUrl + `/lightning/setup/ObjectManager/${objectApiName}/ApexTriggers/${r.Id}/view`;
+
             const trigger = {
                 id: r.Id,
                 name,
                 usage: usage.join(','),
+                url,
             };
 
             return trigger;
@@ -31,9 +34,9 @@
         if(triggers.length) {
             cmd.styledHeader('# Before Triggers');
             context.ux.table(triggers, {
-                id: {},
                 name: {},
                 usage: {},
+                url: {},
             });
         }
 

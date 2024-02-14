@@ -100,8 +100,8 @@
                 context.fs.mkdir(homeDir + projectName + '/classes', { recursive: true }),
             ]).then(() => {
                 return Promise.all([
-                    context.fs.writeFile(homeDir + projectName + '/pages/' + fileName + '.page', poc.page),
-                    context.fs.writeFile(homeDir + projectName + '/pages/' + fileName + '.page-meta.xml', poc.pageMeta),
+                    context.fs.writeFile(homeDir + projectName + '/pages/' + pageName + '.page', poc.page),
+                    context.fs.writeFile(homeDir + projectName + '/pages/' + pageName + '.page-meta.xml', poc.pageMeta),
                     context.fs.writeFile(homeDir + projectName + '/classes/' + controllerName + '.cls', poc.controller),
                     context.fs.writeFile(homeDir + projectName + '/classes/' + controllerName + '.cls-meta.xml', poc.controllerMeta),
                     context.fs.writeFile(homeDir + projectName + '/package.xml', packageXml),

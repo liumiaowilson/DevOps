@@ -73,7 +73,7 @@ export default class ${lwcName} extends LightningElement {
             });
         }
         else {
-            pocPromise = context.mypim.query(`SELECT Id, Name, Answer__c FROM Item__c WHERE Type__c = 'PlainText' AND Name = '${pocName}'`).then(data => {
+            pocPromise = context.mypim.query(`SELECT Id, Name, Answer__c FROM Item__c WHERE Type__c = 'PlainText' AND Parent__r.Name = 'LwcPOC' AND Name = '${pocName}'`).then(data => {
                 const record = data.records[0];
                 setting.recordId = record.Id;
                 setting.name = record.Name;

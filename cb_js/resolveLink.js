@@ -12,6 +12,13 @@
         context.open(url);
         return url;
     }
+    else if(items[0] === 'trigger') {
+        const objectApiName = items[1];
+        const triggerId = items[2];
+        const url = `${context.connection.instanceUrl}/lightning/setup/ObjectManager/${objectApiName}/ApexTriggers/${triggerId}/view`;
+        context.open(url);
+        return url;
+    }
     else {
         cmd.error('Not supported yet');
     }

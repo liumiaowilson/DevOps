@@ -19,7 +19,7 @@
                 usage.push('delete');
             }
 
-            const url = context.connection.instanceUrl + `/lightning/setup/ObjectManager/${objectApiName}/ApexTriggers/${r.Id}/view`;
+            const url = `[m://trigger/${objectApiName}/${r.Id}]`;
 
             const trigger = {
                 id: r.Id,

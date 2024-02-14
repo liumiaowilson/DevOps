@@ -22,10 +22,13 @@
                 usage.push('undelete');
             }
 
+            const url = `[m://trigger/${objectApiName}/${r.Id}]`;
+
             const trigger = {
                 id: r.Id,
                 name,
                 usage: usage.join(','),
+                url,
             };
 
             return trigger;
@@ -34,9 +37,9 @@
         if(triggers.length) {
             cmd.styledHeader('# After Triggers');
             context.ux.table(triggers, {
-                id: {},
                 name: {},
                 usage: {},
+                url: {},
             });
         }
 

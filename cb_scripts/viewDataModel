@@ -1,0 +1,2 @@
+sf mypim run script -o $DefaultAlias -f ~/DevOps/cb_js/generateDataModel.js $@ > dataModel.mmd
+code-server -r dataModel.mmd

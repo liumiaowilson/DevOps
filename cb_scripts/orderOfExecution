@@ -1,0 +1,10 @@
+objectApiName=$1
+
+if [ -z $objectApiName ]; then
+    echo 'Object Api Name is required'
+    exit 0
+fi
+
+sf mypim run script -o $DefaultAlias -f ~/DevOps/cb_js/listSystemValidations.js $objectApiName
+sf mypim run script -o $DefaultAlias -f ~/DevOps/cb_js/listBeforeTriggers.js $objectApiName
+sf mypim run script -o $DefaultAlias -f ~/DevOps/cb_js/listAfterTriggers.js $objectApiName

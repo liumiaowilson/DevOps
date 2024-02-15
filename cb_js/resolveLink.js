@@ -19,6 +19,12 @@
         context.open(url);
         return url;
     }
+    else if(items[0] === 'field') {
+        const [ entityId, fieldId ] = items[1].split('.');
+        const url = `${context.connection.instanceUrl}/lightning/setup/ObjectManager/${entityId}/FieldsAndRelationships/${fieldId}/view`;
+        context.open(url);
+        return url;
+    }
     else {
         cmd.error('Not supported yet');
     }

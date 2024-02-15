@@ -31,6 +31,13 @@
         context.open(url);
         return url;
     }
+    else if(items[0] === 'validationRule') {
+        const durableId = items[1];
+        const vrId = items[2];
+        const url = `${context.connection.instanceUrl}/lightning/setup/ObjectManager/${durableId}/ValidationRules/${vrId}/view`;
+        context.open(url);
+        return url;
+    }
     else {
         cmd.error('Not supported yet');
     }

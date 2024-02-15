@@ -25,6 +25,12 @@
         context.open(url);
         return url;
     }
+    else if(items[0] === 'flow') {
+        const flowId = items[1];
+        const url = `${context.connection.instanceUrl}/lightning/setup/Flows/page?address=%2F${flowId}`;
+        context.open(url);
+        return url;
+    }
     else {
         cmd.error('Not supported yet');
     }

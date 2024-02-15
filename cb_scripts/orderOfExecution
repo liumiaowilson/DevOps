@@ -6,5 +6,7 @@ if [ -z $objectApiName ]; then
 fi
 
 sf mypim run script -o $DefaultAlias -f ~/DevOps/cb_js/listSystemValidations.js $objectApiName
+sf mypim run script -o $DefaultAlias -f ~/DevOps/cb_js/listBeforeFlows.js $objectApiName
 sf mypim run script -o $DefaultAlias -f ~/DevOps/cb_js/listBeforeTriggers.js $objectApiName
 sf mypim run script -o $DefaultAlias -f ~/DevOps/cb_js/listAfterTriggers.js $objectApiName
+sf mypim run script -o $DefaultAlias -f ~/DevOps/cb_js/listAfterFlows.js $objectApiName

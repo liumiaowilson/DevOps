@@ -58,6 +58,12 @@
         context.open(url);
         return url;
     }
+    else if(items[0] === 'workflowRule') {
+        const ruleId = items[1];
+        const url = `${context.connection.instanceUrl}/lightning/setup/WorkflowRules/page?address=%2F${ruleId}`;
+        context.open(url);
+        return url;
+    }
     else {
         cmd.error('Not supported yet');
     }

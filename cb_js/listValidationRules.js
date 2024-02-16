@@ -13,26 +13,31 @@
             return [];
         }
 
-        return context.connection.tooling.query(`SELECT Id, FullName FROM ValidationRule WHERE EntityDefinitionId = '${entity.DurableId}' AND Active = true`).then(vrData => {
-            const result = vrData.records.map(vr => {
-                const [ , name ] = vr.FullName.split('.');
+        return context.connection.tooling.query(`SELECT Id FROM ValidationRule WHERE EntityDefinitionId = '${entity.DurableId}' AND Active = true`).then(vrData => {
+            return Promise.all(vrData.records.map(record => context.connection.tooling.query(`SELECT Id, FullName FROM ValidationRule WHERE Id = '${record.Id}'`))).then(dataList => {
+                const result = dataList.map(data => {
+                    const vr = data.records[0];
+                    if(!vr) return;
 
-                return {
-                    id: vr.Id,
-                    name,
-                    url: '[m://validationRule/' + entity.DurableId + '/' + vr.Id + ']',
-                };
-            }).filter(Boolean);
+                    const [ , name ] = vr.FullName.split('.');
 
-            if(result.length) {
-                cmd.styledHeader('# Validation Rules');
-                context.ux.table(result, {
-                    name: {},
-                    url: {},
-                });
-            }
+                    return {
+                        id: vr.Id,
+                        name,
+                        url: '[m://validationRule/' + entity.DurableId + '/' + vr.Id + ']',
+                    };
+                }).filter(Boolean);
 
-            return result;
+                if(result.length) {
+                    cmd.styledHeader('# Validation Rules');
+                    context.ux.table(result, {
+                        name: {},
+                        url: {},
+                    });
+                }
+
+                return result;
+            });
         });
     }).finally(() => context.ux.action.stop());
 })

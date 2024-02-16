@@ -1,0 +1,6 @@
+if [ -z $1 ]; then
+    echo 'Path is required'
+    exit 0
+fi
+
+sf mypim run script -o $DefaultAlias -f ~/DevOps/cb_js/call.js $1

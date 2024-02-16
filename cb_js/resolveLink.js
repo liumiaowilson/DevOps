@@ -70,6 +70,12 @@
         context.open(url);
         return url;
     }
+    else if(items[0] === 'escalationRule') {
+        const recordId = items[1];
+        const url = `${context.connection.instanceUrl}/lightning/setup/null/page?address=%2Fsetup%2Fown%2Fentityruledetail.jsp%3Fid%3D${recordId}`;
+        context.open(url);
+        return url;
+    }
     else {
         cmd.error('Not supported yet');
     }

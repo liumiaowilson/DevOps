@@ -29,5 +29,5 @@
         }
 
         return approvals;
-    });
+    }).finally(() => context.ux.action.stop());
 })

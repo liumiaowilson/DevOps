@@ -13,9 +13,11 @@
                 if(!record) return;
                 if(!record.Metadata.active) return;
 
+                const [ , name ] = record.FullName.split('.');
+
                 return {
                     id: record.Id,
-                    name: record.FullName,
+                    name,
                     url: '[m://workflowRule/' + record.Id + ']',
                 };
             }).filter(Boolean);

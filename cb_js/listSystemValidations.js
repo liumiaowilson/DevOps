@@ -7,6 +7,8 @@
         return;
     }
 
+    context.ux.action.start('Calculating System Validations');
+
     return context.connection.describe(objectApiName).then(describe => {
         const fieldNames = [];
         const fields = [];
@@ -81,5 +83,7 @@
 
             return fields;
         });
+    }).finally(() => {
+        context.ux.action.stop();
     });
 })

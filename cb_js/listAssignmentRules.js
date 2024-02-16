@@ -9,6 +9,7 @@
         return;
     }
 
+    context.ux.action.start('Calculating Assignment Rules');
     return context.connection.query(`SELECT Id, Name FROM AssignmentRule WHERE SobjectType = '${objectApiName}' AND Active = true`).then(data => {
         const result = data.records.map(record => {
             return {
@@ -27,5 +28,5 @@
         }
 
         return result;
-    });
+    }).finally(() => context.ux.action.stop());
 })

@@ -5,6 +5,7 @@
         return;
     }
 
+    context.ux.action.start('Calculating Validation Rules');
     return context.connection.query(`SELECT DurableId, NamespacePrefix FROM EntityDefinition WHERE QualifiedApiName = '${objectApiName}'`).then(entityData => {
         const entity = entityData.records[0];
         if(!entity) {
@@ -33,5 +34,5 @@
 
             return result;
         });
-    });
+    }).finally(() => context.ux.action.stop());
 })

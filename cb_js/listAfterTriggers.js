@@ -5,6 +5,7 @@
         return;
     }
 
+    context.ux.action.start('Calculating After Triggers');
     return context.connection.query(`SELECT Id, Name, NamespacePrefix, UsageAfterInsert, UsageAfterUpdate, UsageAfterDelete, UsageAfterUndelete FROM ApexTrigger WHERE TableEnumOrId = '${objectApiName}' AND Status = 'Active' AND (UsageAfterInsert = true OR UsageAfterUpdate = true OR UsageAfterDelete = true OR UsageAfterUndelete = true) ORDER BY Name ASC`).then(data => {
         const triggers = data.records.map(r => {
             const name = r.NamespacePrefix ? r.NamespacePrefix + '__' + r.Name : r.Name;
@@ -44,5 +45,5 @@
         }
 
         return triggers;
-    });
+    }).finally(() => context.ux.action.stop());
 })

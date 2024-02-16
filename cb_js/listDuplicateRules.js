@@ -5,6 +5,7 @@
         return;
     }
 
+    context.ux.action.start('Calculating Duplicate Rules');
     return context.connection.query(`SELECT Id, DeveloperName FROM DuplicateRule WHERE SobjectType = '${objectApiName}' AND IsActive = true`).then(data => {
         const result = data.records.map(record => {
             return {
@@ -23,5 +24,5 @@
         }
 
         return result;
-    });
+    }).finally(() => context.ux.action.stop());
 })

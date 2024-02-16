@@ -5,6 +5,7 @@
         return;
     }
 
+    context.ux.action.start('Calculating After Flows');
     return context.connection.query(`SELECT DurableId FROM EntityDefinition WHERE QualifiedApiName = '${objectApiName}'`).then(data => {
         const record = data.records[0];
         if(!record) {
@@ -38,5 +39,5 @@
 
             return result;
         });
-    });
+    }).finally(() => context.ux.action.stop());
 })

@@ -22,3 +22,4 @@ sf mypim run script -o $DefaultAlias -f ~/DevOps/cb_js/listEntitlementProcesses.
 sf mypim run script -o $DefaultAlias -f ~/DevOps/cb_js/listRollupSummaryFields.js $objectApiName
 sf mypim run script -o $DefaultAlias -f ~/DevOps/cb_js/listSharingRules.js $objectApiName
 sf mypim run script -o $DefaultAlias -f ~/DevOps/cb_js/listAsyncActions.js $objectApiName
+sf mypim run script -o $DefaultAlias -f ~/DevOps/cb_js/listLookupRollupSummaryFields.js $objectApiName

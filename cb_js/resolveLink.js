@@ -76,6 +76,12 @@
         context.open(url);
         return url;
     }
+    else if(items[0] === 'entitlementProcess') {
+        const recordId = items[1];
+        const url = `${context.connection.instanceUrl}/lightning/setup/SlaProcess/page?address=%2F${recordId}`;
+        context.open(url);
+        return url;
+    }
     else {
         cmd.error('Not supported yet');
     }

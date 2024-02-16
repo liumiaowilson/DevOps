@@ -17,3 +17,4 @@ sf mypim run script -o $DefaultAlias -f ~/DevOps/cb_js/listWorkflowRules.js $obj
 sf mypim run script -o $DefaultAlias -f ~/DevOps/cb_js/listApprovalProcesses.js $objectApiName
 sf mypim run script -o $DefaultAlias -f ~/DevOps/cb_js/listEscalationRules.js $objectApiName
 sf mypim run script -o $DefaultAlias -f ~/DevOps/cb_js/listAfterFlows.js $objectApiName
+sf mypim run script -o $DefaultAlias -f ~/DevOps/cb_js/listEntitlementProcesses.js $objectApiName

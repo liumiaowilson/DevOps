@@ -82,6 +82,12 @@
         context.open(url);
         return url;
     }
+    else if(items[0] === 'sharingRule') {
+        const recordId = items[1];
+        const url = `${context.connection.instanceUrl}/lightning/setup/SecuritySharing/page?address=%2Fsetup%2Fown%2FshareRule.jsp%3Fid%3D${recordId}`;
+        context.open(url);
+        return url;
+    }
     else {
         cmd.error('Not supported yet');
     }

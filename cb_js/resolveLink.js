@@ -51,6 +51,13 @@
         context.open(url);
         return url;
     }
+    else if(items[0] === 'autoResponseRule') {
+        const objectApiName = items[1];
+        const ruleId = items[2];
+        const url = `${context.connection.instanceUrl}/lightning/setup/${objectApiName}Responses/page?address=%2Fsetup%2Fown%2Fentityruledetail.jsp%3Fid%3D${ruleId}`;
+        context.open(url);
+        return url;
+    }
     else {
         cmd.error('Not supported yet');
     }

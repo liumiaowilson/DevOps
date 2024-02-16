@@ -9,5 +9,6 @@ sf mypim run script -o $DefaultAlias -f ~/DevOps/cb_js/listSystemValidations.js 
 sf mypim run script -o $DefaultAlias -f ~/DevOps/cb_js/listBeforeFlows.js $objectApiName
 sf mypim run script -o $DefaultAlias -f ~/DevOps/cb_js/listBeforeTriggers.js $objectApiName
 sf mypim run script -o $DefaultAlias -f ~/DevOps/cb_js/listValidationRules.js $objectApiName
+sf mypim run script -o $DefaultAlias -f ~/DevOps/cb_js/listDuplicateRules.js $objectApiName
 sf mypim run script -o $DefaultAlias -f ~/DevOps/cb_js/listAfterTriggers.js $objectApiName
 sf mypim run script -o $DefaultAlias -f ~/DevOps/cb_js/listAfterFlows.js $objectApiName

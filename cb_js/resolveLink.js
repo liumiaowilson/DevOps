@@ -38,6 +38,12 @@
         context.open(url);
         return url;
     }
+    else if(items[0] === 'duplicateRule') {
+        const ruleId = items[1];
+        const url = `${context.connection.instanceUrl}/lightning/setup/DuplicateRules/page?address=%2F${ruleId}%3Fsetupid%3DDuplicateRules`;
+        context.open(url);
+        return url;
+    }
     else {
         cmd.error('Not supported yet');
     }

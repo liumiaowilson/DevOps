@@ -1,0 +1,1 @@
+echo '{ "command": "multiclip.snapshotClipboard" }' | websocat ws://localhost:$REMOTE_CONTROL_PORT

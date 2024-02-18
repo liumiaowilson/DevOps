@@ -1,0 +1,11 @@
+echo "========= OS Information ==========="
+cat /etc/os-release
+echo "========= CPU Information ==========="
+lscpu | egrep 'Model name|Socket|Thread|NUMA|CPU\(s\)'
+echo "========= Memory Information ==========="
+free -tg
+echo "========= Disk Space Information ==========="
+df -h
+echo "========= IP Information ==========="
+curl https://ifconfig.me
+echo

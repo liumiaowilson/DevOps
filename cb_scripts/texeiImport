@@ -1,0 +1,9 @@
+mkdir ~/practifi/data/texei/pipeline
+echo '{"records":[]}' > ~/practifi/data/texei/pipeline/1-practifi__Component__c.json
+echo '{"records":[]}' > ~/practifi/data/texei/pipeline/2-practifi__Component_Relation__c.json
+cd ~/practifi/data/texei/components
+node compile.js pipeline
+sfdx force:apex:execute -o $DefaultAlias -f ~/DevOps/apex/deleteComponents.apex
+cd ~/practifi
+sfdx texei:data:import -o $DefaultAlias --inputdir ./data/texei/pipeline
+rm -rf ~/practifi/data/texei/pipeline

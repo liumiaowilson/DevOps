@@ -6,9 +6,9 @@
         source: input => {
             if(!input || input.length < 3) return [];
 
-            const query = `FIND {${input}} IN ALL FIELDS RETURNING practifi__Component__c(Id, Name)`;
+            const query = `FIND {${input}} IN ALL FIELDS RETURNING practifi__Component__c(Id, Name, RecordType.Name)`;
             return context.connection.search(query).then(data => {
-                return data.searchRecords.map(r => ({ value: r.Name, description: r.Name }));
+                return data.searchRecords.map(r => ({ value: r.Name, description: r.RecordType.Name }));
             });
         },
     }).then(name => {

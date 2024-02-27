@@ -1,0 +1,6 @@
+if [ -z $1 ]; then
+    echo 'Component path is required'
+    exit 0
+fi
+
+sf mypim run script -o $DefaultAlias -f ~/DevOps/cb_js/deployComponent.js $1

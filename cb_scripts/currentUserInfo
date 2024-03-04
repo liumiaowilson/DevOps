@@ -1,0 +1,2 @@
+username=`sf org display -o $DefaultAlias --verbose --json | jq -r .result.username`
+sf data get record -o $DefaultAlias --sobject User --where "Username="$username

@@ -70,6 +70,9 @@ _dev()
                 opts=`cat ~/.sfdx/alias.json  | grep '        "' | sed 's/^        "\([^"]*\)".*/\1/'`
                 opts+=`ls -1 ~/.sfdx/ | grep @ | sed 's/\.json$//g'`
                 ;;
+            setDefault)
+                opts=`cat ~/.sfdx/alias.json | jq -r '.orgs | keys | join(" ")'`
+                ;;
             *)
                 opts=`ls -1`
                 ;;

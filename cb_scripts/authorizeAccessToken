@@ -1,0 +1,26 @@
+alias=$1
+instanceUrl=$2
+accessToken=$3
+username=$4
+
+if [ -z $alias ]; then
+    echo 'Alias is required'
+    exit 0
+fi
+
+if [ -z $instanceUrl ]; then
+    echo 'Instance Url is required'
+    exit 0
+fi
+
+if [ -z $accessToken ]; then
+    echo 'Access Token is required'
+    exit 0
+fi
+
+if [ -z $username ]; then
+    echo 'Username is required'
+    exit 0
+fi
+
+sf mypim login custom -a $alias -r $instanceUrl -t $accessToken -u $username

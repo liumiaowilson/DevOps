@@ -1,0 +1,9 @@
+path=$1
+
+if [ -z $path ]; then
+    echo 'Path is required'
+    exit 0
+fi
+
+cat $path > ~/clipboard
+echo '{"command": "multiclip.fileToClipboard"}' | websocat ws://localhost:$REMOTE_CONTROL_PORT

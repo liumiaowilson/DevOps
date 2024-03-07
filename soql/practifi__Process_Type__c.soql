@@ -1,0 +1,62 @@
+SELECT
+    Id, Name,
+    (
+        SELECT
+            Id, Name
+        FROM practifi__Process_Stages__r
+        ORDER BY practifi__Order__c ASC
+    ),
+    (
+        SELECT
+            Id, Name,
+            (
+                SELECT
+                    Id, Name,
+                    (
+                        SELECT
+                            Id, Name
+                        FROM practifi__Active_Form_Validation_Rules__r
+                        ORDER BY Name ASC
+                    )
+                FROM practifi__Active_Form_Fields__r
+                ORDER BY practifi__Order__c ASC
+            )
+        FROM practifi__Pinned_Active_Form_Sections__r
+        ORDER BY practifi__Order__c ASC
+    ),
+    (
+        SELECT
+            Id, Name
+        FROM practifi__Available_Workflows__r
+        ORDER BY Name ASC
+    ),
+    (
+        SELECT
+            Id, practifi__Subject__c,
+            (
+                SELECT Id, Name
+                FROM practifi__From_Task_Actions__r
+                ORDER BY practifi__Order__c ASC
+            ),
+            (
+                SELECT Id, Name
+                FROM practifi__Task_Outcomes__r
+                ORDER BY practifi__Order__c ASC
+            )
+        FROM practifi__Process_Tasks__r
+        ORDER BY practifi__Order__c ASC
+    ),
+    (
+        SELECT
+            Id, Name,
+            (
+                SELECT
+                    Id, Name
+                FROM practifi__Rule_Actions__r
+                ORDER BY Name ASC
+            )
+        FROM practifi__Rule_Criteria__r
+        ORDER BY Name ASC
+    )
+FROM practifi__Process_Type__c
+WHERE Id = '{{recordId}}'

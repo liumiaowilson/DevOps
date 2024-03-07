@@ -1,0 +1,8 @@
+recordId=$1
+
+if [ -z $recordId ]; then
+    echo 'Record Id is required'
+    exit 0
+fi
+
+sf mypim run script -o $DefaultAlias -f ~/DevOps/cb_js/openRecord.js $recordId

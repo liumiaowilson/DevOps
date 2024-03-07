@@ -5,3 +5,4 @@ fi
 
 sf config set target-org $1 > /dev/null 2>&1
 sf config set --global target-org $1
+sf mypim run script -o $1 -f ~/DevOps/cb_js/setDefault.js

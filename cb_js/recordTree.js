@@ -37,11 +37,8 @@
 
     context.ux.action.start('Querying');
     return context.require('chalk').then(({ default: chalk }) => {
-        return context.connection.describeGlobal().then(data => {
-            const prefixMap = {};
-            for(const sobject of data.sobjects) {
-                prefixMap[sobject.keyPrefix] = sobject.name;
-            }
+        return context.fs.readFile('/home/codebuilder/keyPrefix.json', 'utf8').then(keyPrefixJSON => {
+            const prefixMap = JSON.parse(keyPrefixJSON);
 
             const objectApiName = prefixMap[recordId.substring(0, 3)];
             const queryFile = '/home/codebuilder/DevOps/soql/' + objectApiName + '.soql';

@@ -1,7 +1,7 @@
 (function(cmd, context) {
-    const recordId = context.argv[0];
-    if(!recordId) {
-        cmd.error('Record Id is required');
+    const path = context.argv[0];
+    if(!path) {
+        cmd.error('Path is required');
         return;
     }
 
@@ -35,29 +35,18 @@
         return tree;
     };
 
-    context.ux.action.start('Querying');
     return context.require('chalk').then(({ default: chalk }) => {
-        return context.fs.readFile('/home/codebuilder/keyPrefix.json', 'utf8').then(keyPrefixJSON => {
-            const prefixMap = JSON.parse(keyPrefixJSON);
+        return context.fs.readFile(path, 'utf8').then(dataJSON => {
+            const data = JSON.parse(dataJSON);
+            const root = context.ux.tree();
+            for(const record of data.records) {
+                const tree = buildRecordTree(record, context, chalk);
+                const name = chalk.green(getRecordName(record)) + '[m://' + record.Id + ']';
+                root.insert(name, tree);
+            }
 
-            const objectApiName = prefixMap[recordId.substring(0, 3)];
-            const queryFile = '/home/codebuilder/DevOps/soql/' + objectApiName + '.soql';
-
-            return context.fs.readFile(queryFile, 'utf8').then(query => {
-                query = query.replaceAll('{{recordId}}', recordId);
-
-                return context.connection.query(query).then(data => {
-                    const root = context.ux.tree();
-                    for(const record of data.records) {
-                        const tree = buildRecordTree(record, context, chalk);
-                        const name = chalk.green(getRecordName(record)) + '[m://' + record.Id + ']';
-                        root.insert(name, tree);
-                    }
-
-                    root.display();
-                    return data;
-                });
-            });
+            root.display();
+            return data;
         });
-    }).finally(() => context.ux.action.stop());
+    });
 })

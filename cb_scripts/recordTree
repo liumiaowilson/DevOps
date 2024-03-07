@@ -5,4 +5,8 @@ if [ -z $recordId ]; then
     exit 0
 fi
 
-sf mypim run script -o $DefaultAlias -f ~/DevOps/cb_js/recordTree.js $recordId
+sf mypim run script -o $DefaultAlias -f ~/DevOps/cb_js/generateRecordQuery.js $recordId > ~/tmp.soql
+sf mypim run script -o $DefaultAlias -f ~/DevOps/cb_js/deepQuery.js ~/tmp.soql > ~/result.json
+sf mypim run script -o $DefaultAlias -f ~/DevOps/cb_js/recordTree.js ~/result.json
+rm ~/tmp.soql
+rm ~/result.json

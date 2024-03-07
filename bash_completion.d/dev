@@ -73,6 +73,9 @@ _dev()
             setDefault)
                 opts=`cat ~/.sfdx/alias.json | jq -r '.orgs | keys | join(" ")'`
                 ;;
+            app)
+                opts=`cat ~/apps.json | jq -r 'keys | join(" ")'`
+                ;;
             *)
                 opts=`ls -1`
                 ;;

@@ -1,0 +1,8 @@
+appName=$1
+
+if [ -z $appName ]; then
+    echo 'AppName is required'
+    exit 0
+fi
+
+sf mypim run script -o $DefaultAlias -f ~/DevOps/cb_js/openApp.js $appName

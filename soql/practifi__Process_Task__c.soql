@@ -2,12 +2,6 @@ SELECT
     Id, practifi__Subject__c,
     (
         SELECT
-            Id, Name
-        FROM practifi__Action_Field_Values__r
-        ORDER BY Name ASC
-    ),
-    (
-        SELECT
             Id, Name,
             (
                 SELECT
@@ -41,7 +35,13 @@ SELECT
                             Id, Name,
                             (
                                 SELECT
-                                    Id, Name
+                                    Id, Name,
+                                    (
+                                        SELECT
+                                            Id, Name
+                                        FROM practifi__Active_Form_Validation_Rules__r
+                                        ORDER BY Name ASC
+                                    )
                                 FROM practifi__Active_Form_Fields__r
                                 ORDER BY practifi__Order__c ASC
                             )
@@ -52,6 +52,54 @@ SELECT
                 ORDER BY practifi__Order__c ASC
             )
         FROM practifi__Active_Form_Screens__r
+        ORDER BY practifi__Order__c ASC
+    ),
+    (
+        SELECT
+            Id, Name,
+            (
+                SELECT
+                    Id, Name
+                FROM practifi__Active_Form_Display_Criteria_List__r
+                ORDER BY Name ASC
+            ),
+            (
+                SELECT
+                    Id, Name,
+                    (
+                        SELECT
+                            Id, Name
+                        FROM practifi__Active_Form_Validation_Rules__r
+                        ORDER BY Name ASC
+                    )
+                FROM practifi__Active_Form_Fields__r
+                ORDER BY practifi__Order__c ASC
+            ),
+            (
+                SELECT
+                    Id, Name
+                FROM practifi__Active_Form_Prompts__r
+                ORDER BY practifi__Order__c ASC
+            ),
+            (
+                SELECT
+                    Id, Name,
+                    (
+                        SELECT
+                            Id, Name,
+                            (
+                                SELECT
+                                    Id, Name
+                                FROM practifi__Active_Form_Validation_Rules__r
+                                ORDER BY Name ASC
+                            )
+                        FROM practifi__Active_Form_Fields__r
+                        ORDER BY practifi__Order__c ASC
+                    )
+                FROM practifi__Active_Form_Tables__r
+                ORDER BY practifi__Order__c ASC
+            )
+        FROM practifi__Active_Form_Field_Sections__r
         ORDER BY practifi__Order__c ASC
     ),
     (
@@ -79,7 +127,20 @@ SELECT
         ORDER BY Name ASC
     ),
     (
-        SELECT Id, Name
+        SELECT
+            Id, Name,
+            (
+                SELECT
+                    Id, Name
+                FROM practifi__Action_Field_Values__r
+                ORDER BY Name ASC
+            ),
+            (
+                SELECT
+                    Id, Name
+                FROM practifi__Active_Form_Field_Assignments__r
+                ORDER BY Name ASC
+            )
         FROM practifi__From_Task_Actions__r
         ORDER BY practifi__Order__c ASC
     ),
@@ -87,6 +148,16 @@ SELECT
         SELECT Id, Name
         FROM practifi__Task_Outcomes__r
         ORDER BY practifi__Order__c ASC
+    ),
+    (
+        SELECT Id, Name
+        FROM practifi__Preset_Checklist_Items__r
+        ORDER BY Name ASC
+    ),
+    (
+        SELECT Id, Name
+        FROM practifi__Deliverable_Types__r
+        ORDER BY Name ASC
     ),
     (
         SELECT

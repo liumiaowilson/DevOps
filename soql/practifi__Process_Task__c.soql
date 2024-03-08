@@ -14,7 +14,7 @@ SELECT
                     ),
                     (
                         SELECT
-                            Id, Name,
+                            Id, Name, practifi__Type__c,
                             (
                                 SELECT
                                     Id, Name
@@ -35,7 +35,7 @@ SELECT
                             Id, Name,
                             (
                                 SELECT
-                                    Id, Name,
+                                    Id, Name, practifi__Type__c,
                                     (
                                         SELECT
                                             Id, Name
@@ -65,7 +65,7 @@ SELECT
             ),
             (
                 SELECT
-                    Id, Name,
+                    Id, Name, practifi__Type__c,
                     (
                         SELECT
                             Id, Name
@@ -86,7 +86,7 @@ SELECT
                     Id, Name,
                     (
                         SELECT
-                            Id, Name,
+                            Id, Name, practifi__Type__c,
                             (
                                 SELECT
                                     Id, Name

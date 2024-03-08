@@ -5,28 +5,37 @@
         return;
     }
 
-    const getRecordName = record => {
-        for(const key of Object.keys(record)) {
-            if(key === 'Id') continue;
+    const getRecordName = (record, keyPrefixMap, renderers) => {
+        const keyPrefix = record.Id.substring(0, 3);
+        const objectApiName = keyPrefixMap[keyPrefix];
+        const renderer = renderers[objectApiName];
 
-            const value = record[key];
-            if(value && typeof value === 'string') {
-                return value;
+        if(!renderer) {
+            for(const key of Object.keys(record)) {
+                if(key === 'Id') continue;
+
+                const value = record[key];
+                if(value && typeof value === 'string') {
+                    return value;
+                }
             }
-        }
 
-        return record.Id;
+            return record.Id;
+        }
+        else {
+            return renderer(record);
+        }
     };
 
-    const buildRecordTree = (record, context, chalk) => {
+    const buildRecordTree = (record, context, chalk, keyPrefixMap, renderers) => {
         const tree = context.ux.tree();
 
         Object.keys(record).forEach(key => {
             const value = record[key];
             if(value && value.records) {
                 for(const childRecord of value.records) {
-                    const childTree = buildRecordTree(childRecord, context, chalk);
-                    const name = chalk.dim('(' + key + ')') + chalk.green(getRecordName(childRecord)) + '[m://' + childRecord.Id + ']';
+                    const childTree = buildRecordTree(childRecord, context, chalk, keyPrefixMap, renderers);
+                    const name = chalk.dim('(' + key + ')') + chalk.green(getRecordName(childRecord, keyPrefixMap, renderers)) + '[m://' + childRecord.Id + ']';
                     tree.insert(name, childTree);
                 }
             }
@@ -36,12 +45,19 @@
     };
 
     return context.require('chalk').then(({ default: chalk }) => {
-        return context.fs.readFile(path, 'utf8').then(dataJSON => {
+        return Promise.all([
+            context.fs.readFile(path, 'utf8'),
+            context.fs.readFile('/home/codebuilder/DevOps/js/recordTree.js', 'utf8'),
+            context.fs.readFile('/home/codebuilder/keyPrefix.json', 'utf8'),
+        ]).then(([ dataJSON, renderersScript, keyPrefixJSON ]) => {
             const data = JSON.parse(dataJSON);
+            const renderers = eval(renderersScript);
+            const keyPrefixMap = JSON.parse(keyPrefixJSON);
+
             const root = context.ux.tree();
             for(const record of data.records) {
-                const tree = buildRecordTree(record, context, chalk);
-                const name = chalk.green(getRecordName(record)) + '[m://' + record.Id + ']';
+                const tree = buildRecordTree(record, context, chalk, keyPrefixMap, renderers);
+                const name = chalk.green(getRecordName(record, keyPrefixMap, renderers)) + '[m://' + record.Id + ']';
                 root.insert(name, tree);
             }
 

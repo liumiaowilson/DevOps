@@ -1,1 +1,6 @@
+# {
+#   "name": "deleteAllLogs",
+#   "description": "Delete all apex logs",
+#   "usage": "dev deleteAllLogs"
+# }
 sf mypim run script -o $DefaultAlias -f ~/DevOps/cb_js/deleteAllLogs.js

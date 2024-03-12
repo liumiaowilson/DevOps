@@ -1,1 +1,6 @@
+# {
+#   "name": "texeiInstall",
+#   "description": "Install SFDX texei plugin",
+#   "usage": "dev texeiInstall"
+# }
 echo y | sfdx plugins:install texei-sfdx-plugin

@@ -1,3 +1,8 @@
+# {
+#   "name": "listBeforeFlows",
+#   "description": "List all before flows for the given object",
+#   "usage": "dev listBeforeFlows <objectApiName>"
+# }
 objectApiName=$1
 
 if [ -z $objectApiName ]; then

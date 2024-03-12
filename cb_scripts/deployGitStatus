@@ -1,3 +1,8 @@
+# {
+#   "name": "deployGitStatus",
+#   "description": "Deploy all metadata files listed by git status command",
+#   "usage": "dev deployGitStatus"
+# }
 git status -s > ~/tmp.txt
 paths=`sf mypim run script -o $DefaultAlias -f ~/DevOps/cb_js/concatGitStatusLines.js ~/tmp.txt`
 sfdx force:source:deploy -p "$paths"

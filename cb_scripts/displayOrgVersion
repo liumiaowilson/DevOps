@@ -1,4 +1,8 @@
-#!/bin/sh
+# {
+#   "name": "displayOrgVersion",
+#   "description": "Display the version, expiration date of the default org",
+#   "usage": "dev displayOrgVersion"
+# }
 alias=$DefaultAlias
 
 sf mypim run script -o $alias -f ~/DevOps/cb_js/displayOrgVersion.js $@

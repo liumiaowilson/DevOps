@@ -1,5 +1,8 @@
-#!/bin/sh
-
+# {
+#   "name": "tab",
+#   "description": "Open the given file in a new VSCode browser page",
+#   "usage": "dev tab <path>"
+# }
 path=$1
 
 if [ -z $path ]; then

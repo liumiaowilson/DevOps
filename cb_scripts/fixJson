@@ -1,9 +1,0 @@
-path=$1
-
-if [ -z $path ]; then
-    echo 'Path is required'
-    exit 0
-fi
-
-sf mypim run script -o $DefaultAlias -f ~/DevOps/cb_js/fixJson.js $path
-code-server -r $path

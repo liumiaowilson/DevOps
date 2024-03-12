@@ -1,3 +1,8 @@
+# {
+#   "name": "listAutoResponseRules",
+#   "description": "List all auto response rules for the given object",
+#   "usage": "dev listAutoResponseRules <objectApiName>"
+# }
 objectApiName=$1
 
 if [ -z $objectApiName ]; then

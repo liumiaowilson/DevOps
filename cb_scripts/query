@@ -1,3 +1,8 @@
+# {
+#   "name": "query",
+#   "description": "Run the given query in the default org",
+#   "usage": "dev query <query>"
+# }
 query="$@"
 
 sf data query -q "$query" -o $DefaultAlias

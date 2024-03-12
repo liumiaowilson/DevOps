@@ -1,3 +1,8 @@
+# {
+#   "name": "grantVfPageAccess",
+#   "description": "Grant the selected user with the access to the given visualforce page",
+#   "usage": "dev grantVfPageAccess <pageName>"
+# }
 pageName=$1
 
 if [ -z $pageName ]; then

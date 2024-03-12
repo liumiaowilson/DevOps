@@ -1,3 +1,8 @@
+# {
+#   "name": "iterateComponents",
+#   "description": "Iterate all practifi component json files using a javascript file to process",
+#   "usage": "dev iterateComponents <callback_script_file>"
+# }
 if [ -z $1 ]; then
     echo 'Callback script path is required'
     exit 0

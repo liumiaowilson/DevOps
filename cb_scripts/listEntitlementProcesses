@@ -1,3 +1,8 @@
+# {
+#   "name": "listEntitlementProcesses",
+#   "description": "List all entitlement processes for the given object",
+#   "usage": "dev listEntitlementProcesses <objectApiName>"
+# }
 objectApiName=$1
 
 if [ -z $objectApiName ]; then

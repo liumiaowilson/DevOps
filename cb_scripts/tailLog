@@ -1,1 +1,6 @@
+# {
+#   "name": "tailLog",
+#   "description": "Tail apex log stream, but filter out logs that are in the exclude list",
+#   "usage": "dev tailLog <excludes>"
+# }
 sf mypim run script -o $DefaultAlias -f ~/DevOps/cb_js/tailLog.js "$@"

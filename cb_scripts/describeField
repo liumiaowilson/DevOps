@@ -1,4 +1,8 @@
-#!/bin/sh
+# {
+#   "name": "describeField",
+#   "description": "Describe the detail of this field in the given object",
+#   "usage": "dev describeField <objectApiName> <fieldName>"
+# }
 alias=$DefaultAlias
 objectApiName=$1
 fieldName=$2

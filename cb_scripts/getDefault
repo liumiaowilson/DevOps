@@ -1,1 +1,6 @@
+# {
+#   "name": "getDefault",
+#   "description": "Get the current default org",
+#   "usage": "dev getDefault"
+# }
 sf config get target-org

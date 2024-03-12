@@ -1,4 +1,8 @@
-#!/bin/sh
+# {
+#   "name": "enableDebug",
+#   "description": "Enable debug logs for selected user",
+#   "usage": "dev enableDebug"
+# }
 user=$1
 alias=$DefaultAlias
 

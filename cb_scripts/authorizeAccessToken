@@ -1,3 +1,8 @@
+# {
+#   "name": "authorizeAccessToken",
+#   "description": "Authorize a connection using access token, instance url and username",
+#   "usage": "dev authorizeAccessToken <alias> <instanceUrl> <accessToken> <username>"
+# }
 alias=$1
 instanceUrl=$2
 accessToken=$3

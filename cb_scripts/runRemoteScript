@@ -1,3 +1,8 @@
+# {
+#   "name": "runRemoteScript",
+#   "description": "Run the javascript file to remote control VSCode",
+#   "usage": "dev runRemoteScript <absolute_js_path>"
+# }
 path=$1
 
 if [ -z $path ]; then

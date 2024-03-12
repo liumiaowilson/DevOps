@@ -1,2 +1,7 @@
+# {
+#   "name": "viewDataModel",
+#   "description": "Generate a mermaid file representing the data model of the given objects",
+#   "usage": "dev viewDataModel <objectApiNames>"
+# }
 sf mypim run script -o $DefaultAlias -f ~/DevOps/cb_js/generateDataModel.js $@ > dataModel.mmd
 code-server -r dataModel.mmd

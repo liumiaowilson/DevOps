@@ -1,5 +1,8 @@
-#!/bin/sh
-
+# {
+#   "name": "deploy",
+#   "description": "Deploy all metadata in current directory to the default org",
+#   "usage": "dev deploy ."
+# }
 if [ -z $1 ]; then
     dir=$RootDir/src
 else

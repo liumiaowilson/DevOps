@@ -1,2 +1,7 @@
+# {
+#   "name": "auraPocView",
+#   "description": "View Aura POC in the local project",
+#   "usage": "dev auraPocView"
+# }
 sf project deploy start -o $DefaultAlias --metadata-dir ~/AuraPoc/
 sf mypim run script -o $DefaultAlias -f ~/DevOps/cb_js/previewLwcWithPayload.js c:testAuraPOC1542 ~/AuraPoc/payload.json

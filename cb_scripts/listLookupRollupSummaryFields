@@ -1,3 +1,8 @@
+# {
+#   "name": "listLookupRollupSummaryFields",
+#   "description": "List all lookup rollup summary fields for the given object",
+#   "usage": "dev listLookupRollupSummaryFields <objectApiName>"
+# }
 objectApiName=$1
 
 if [ -z $objectApiName ]; then

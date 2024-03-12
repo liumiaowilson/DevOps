@@ -1,3 +1,8 @@
+# {
+#   "name": "deployFile",
+#   "description": "Deploy all metadata listed in the file to the default org",
+#   "usage": "dev deployFile <file>"
+# }
 if [ -z $1 ]; then
     echo 'File is required'
     exit 0

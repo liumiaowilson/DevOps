@@ -1,3 +1,8 @@
+# {
+#   "name": "setDefault",
+#   "description": "Set the alias to be the default org",
+#   "usage": "dev setDefault <alias>"
+# }
 if [ -z $1 ]; then
     echo 'No org alias is provided'
     exit 0

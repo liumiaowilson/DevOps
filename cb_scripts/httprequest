@@ -1,4 +1,8 @@
-#!/bin/sh
+# {
+#   "name": "httprequest",
+#   "description": "Open MyPIM HttpRequestDemo page with the current org information",
+#   "usage": "dev httprequest"
+# }
 alias=$DefaultAlias
 
 instanceUrl=`sf org display --verbose --json -o $alias | jq -r .result.instanceUrl`

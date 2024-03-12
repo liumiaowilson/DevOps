@@ -1,4 +1,8 @@
-#!/bin/sh
+# {
+#   "name": "describeChildRelationships",
+#   "description": "Describe all child relationships of this given object",
+#   "usage": "dev describeChildRelationships <objectApiName>"
+# }
 alias=$DefaultAlias
 name=$1
 

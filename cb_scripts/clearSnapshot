@@ -1,1 +1,6 @@
+# {
+#   "name": "clearSnapshot",
+#   "description": "Clear the snapshot content",
+#   "usage": "dev clearSnapshot"
+# }
 echo '' > ~/snapshot

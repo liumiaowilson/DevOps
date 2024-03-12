@@ -1,3 +1,8 @@
+# {
+#   "name": "sysinfo",
+#   "description": "Print system information, like OS, CPU, memory, disk and IP",
+#   "usage": "dev sysinfo"
+# }
 echo "========= OS Information ==========="
 cat /etc/os-release
 echo "========= CPU Information ==========="

@@ -1,3 +1,8 @@
+# {
+#   "name": "toolingQuery",
+#   "description": "Run the query using tooling api in the default org",
+#   "usage": "dev toolingQuery <query>"
+# }
 query="$@"
 
 sf data query -q "$query" -o $DefaultAlias -t

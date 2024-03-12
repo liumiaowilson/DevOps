@@ -1,3 +1,8 @@
+# {
+#   "name": "checkUserObjectPermission",
+#   "description": "Check how the object permission is granted to this user",
+#   "usage": "dev checkUserObjectPermission <userId> <objectApiName>"
+# }
 userId=$1
 objectApiName=$2
 

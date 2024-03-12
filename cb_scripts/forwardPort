@@ -1,4 +1,8 @@
-#!/bin/sh
+# {
+#   "name": "forwardPort",
+#   "description": "Generate the url that forwards the given port",
+#   "usage": "dev forwardPort <port>"
+# }
 port=$1
 
 sf mypim forward port -p $port

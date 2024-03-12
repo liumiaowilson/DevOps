@@ -1,1 +1,6 @@
+# {
+#   "name": "checkUsage",
+#   "description": "Check the usage of the given metadata in the default org",
+#   "usage": "dev checkUsage"
+# }
 sf mypim run script -o $DefaultAlias -f ~/DevOps/cb_js/happysoup.js usage

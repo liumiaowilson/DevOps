@@ -1,3 +1,8 @@
+# {
+#   "name": "retrievePath",
+#   "description": "Retrieve the metadata from the given path",
+#   "usage": "dev retrievePath <path>"
+# }
 if [ -z $1 ]; then
     echo 'Path is required'
     exit 0

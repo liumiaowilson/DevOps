@@ -1,3 +1,8 @@
+# {
+#   "name": "recordTree",
+#   "description": "Show the related records in a tree",
+#   "usage": "dev recordTree <recordId>"
+# }
 recordId=$1
 
 if [ -z $recordId ]; then

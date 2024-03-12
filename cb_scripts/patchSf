@@ -1,1 +1,6 @@
+# {
+#   "name": "patchSf",
+#   "description": "Patch SF CLI to suppress some warning information",
+#   "usage": "dev patchSf"
+# }
 sf mypim run script -o $DefaultAlias -f ~/DevOps/cb_js/patch_sf.js

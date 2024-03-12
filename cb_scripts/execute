@@ -1,3 +1,8 @@
+# {
+#   "name": "execute",
+#   "description": "Execute the apex script file in the default org",
+#   "usage": "dev execute <file>"
+# }
 if [ -z $1 ]; then
     echo 'Path is required'
     exit 0

@@ -1,3 +1,8 @@
+# {
+#   "name": "copyCustomLogin",
+#   "description": "Copy the apex script to run in the anonymous code to generate the command to authorize the org with the alias",
+#   "usage": "dev copyCustomLogin <alias>"
+# }
 alias=$1
 
 if [ -z $alias ]; then

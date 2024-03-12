@@ -1,4 +1,8 @@
-#!/bin/sh
+# {
+#   "name": "webConsole",
+#   "description": "Open the web developer console of the default org",
+#   "usage": "dev webConsole"
+# }
 alias=$DefaultAlias
 
 url=`sf org open -o $alias --json | jq -r .result.url`

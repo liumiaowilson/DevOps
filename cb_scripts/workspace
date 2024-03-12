@@ -1,5 +1,8 @@
-#!/bin/sh
-
+# {
+#   "name": "workspace",
+#   "description": "Open the given directory as the new project root",
+#   "usage": "dev workspace <directory>"
+# }
 path=$1
 
 if [ -z $path ]; then

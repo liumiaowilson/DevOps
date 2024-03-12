@@ -1,1 +1,6 @@
+# {
+#   "name": "disableLogViewer",
+#   "description": "Disable practifi log viewer",
+#   "usage": "dev disableLogViewer"
+# }
 sf mypim run script -o $DefaultAlias -f ~/DevOps/cb_js/disableLogViewer.js

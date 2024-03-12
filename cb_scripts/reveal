@@ -1,4 +1,8 @@
-#!/bin/sh
+# {
+#   "name": "reveal",
+#   "description": "Open the given file in VSCode editor",
+#   "usage": "dev reveal <path>"
+# }
 path=$1
 
 code-server -r $path

@@ -1,2 +1,7 @@
+# {
+#   "name": "vfPagePocLoad",
+#   "description": "Load Visualforce page POC into the local project and open it",
+#   "usage": "dev vfPagePocLoad"
+# }
 sf mypim run script -o $DefaultAlias -f ~/DevOps/cb_js/vfPagePocLoad.js
 code-server ~/VfPagePoc

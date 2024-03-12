@@ -1,1 +1,6 @@
+# {
+#   "name": "retrieveComponent",
+#   "description": "Retrieve practifi component json from the default org",
+#   "usage": "dev retrieveComponent"
+# }
 sf mypim run script -o $DefaultAlias -f ~/DevOps/cb_js/retrieveComponent.js

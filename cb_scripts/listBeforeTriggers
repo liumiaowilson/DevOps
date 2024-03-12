@@ -1,3 +1,8 @@
+# {
+#   "name": "listBeforeTriggers",
+#   "description": "List all before triggers for the given object",
+#   "usage": "dev listBeforeTriggers <objectApiName>"
+# }
 objectApiName=$1
 
 if [ -z $objectApiName ]; then

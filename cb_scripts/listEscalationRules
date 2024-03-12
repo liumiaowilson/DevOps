@@ -1,3 +1,8 @@
+# {
+#   "name": "listEscalationRules",
+#   "description": "List all escalation rules for the given object",
+#   "usage": "dev listEscalationRules <objectApiName>"
+# }
 objectApiName=$1
 
 if [ -z $objectApiName ]; then

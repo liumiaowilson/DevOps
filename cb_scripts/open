@@ -1,5 +1,8 @@
-#!/bin/sh
-
+# {
+#   "name": "open",
+#   "description": "Open the default org in the browser",
+#   "usage": "dev open"
+# }
 alias=$DefaultAlias
 
 url=`sf org open -o $alias --json | jq -r .result.url`

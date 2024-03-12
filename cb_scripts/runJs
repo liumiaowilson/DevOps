@@ -1,4 +1,8 @@
-#!/bin/sh
+# {
+#   "name": "runJs",
+#   "description": "Run the javascript file in the context of SF CLI",
+#   "usage": "dev runJs <js_path>"
+# }
 alias=$DefaultAlias
 
 sf mypim run script -o $alias -f $@

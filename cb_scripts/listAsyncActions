@@ -1,3 +1,8 @@
+# {
+#   "name": "listAsyncActions",
+#   "description": "List all async actions(time-based actions) for the given object",
+#   "usage": "dev listAsyncActions <objectApiName>"
+# }
 objectApiName=$1
 
 if [ -z $objectApiName ]; then

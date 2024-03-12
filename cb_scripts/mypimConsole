@@ -1,4 +1,8 @@
-#!/bin/sh
+# {
+#   "name": "mypimConsole",
+#   "description": "Open MyPIM Console from the default org",
+#   "usage": "dev mypimConsole"
+# }
 alias=$DefaultAlias
 
 sf mypim open console -o $alias

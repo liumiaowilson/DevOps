@@ -1,3 +1,8 @@
+# {
+#   "name": "deployComponent",
+#   "description": "Deploy practifi component json to the default org",
+#   "usage": "dev deployComponent <componentPath>"
+# }
 if [ -z $1 ]; then
     echo 'Component path is required'
     exit 0

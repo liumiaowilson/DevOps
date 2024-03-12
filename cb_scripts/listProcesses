@@ -1,3 +1,8 @@
+# {
+#   "name": "listProcesses",
+#   "description": "List all processes(process builder) for the given object",
+#   "usage": "dev listProcesses <objectApiName>"
+# }
 objectApiName=$1
 
 if [ -z $objectApiName ]; then

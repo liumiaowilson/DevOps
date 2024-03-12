@@ -1,3 +1,8 @@
+# {
+#   "name": "app",
+#   "description": "Open the given app in the default org",
+#   "usage": "dev app <appName>"
+# }
 appName=$1
 
 if [ -z $appName ]; then

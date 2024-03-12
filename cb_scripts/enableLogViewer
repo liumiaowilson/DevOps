@@ -1,1 +1,6 @@
+# {
+#   "name": "enableLogViewer",
+#   "description": "Enable practifi log viewer for selected user",
+#   "usage": "dev enableLogViewer"
+# }
 sf mypim run script -o $DefaultAlias -f ~/DevOps/cb_js/enableLogViewer.js

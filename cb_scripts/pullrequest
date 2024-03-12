@@ -1,5 +1,8 @@
-#!/bin/sh
-
+# {
+#   "name": "pullrequest",
+#   "description": "Open the Create PullRequest page in bitbucket from local branch",
+#   "usage": "dev pullrequest"
+# }
 remote=`git remote get-url origin | sed 's/.*@bitbucket.org:\(.*\).git/\1/'`
 
 branch=`git rev-parse --abbrev-ref HEAD`

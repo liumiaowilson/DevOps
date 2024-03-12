@@ -1,2 +1,7 @@
+# {
+#   "name": "lwcPocView",
+#   "description": "View the LWC POC from the local project",
+#   "usage": "dev lwcPocView"
+# }
 sf project deploy start -o $DefaultAlias --metadata-dir ~/LwcPoc/
 sf mypim run script -o $DefaultAlias -f ~/DevOps/cb_js/previewLwcWithPayload.js c:testLwcPOC4921 ~/LwcPoc/payload.json

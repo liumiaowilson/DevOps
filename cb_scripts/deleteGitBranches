@@ -1,3 +1,8 @@
+# {
+#   "name": "deleteGitBranches",
+#   "description": "Delete all git branches listed in the file",
+#   "usage": "dev deleteGitBranches <file>"
+# }
 if [ -z $1 ]; then
     echo 'File is required'
     exit 0

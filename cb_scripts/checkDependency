@@ -1,1 +1,6 @@
+# {
+#   "name": "checkDependency",
+#   "description": "Check the dependecies of a given metadata in the default org",
+#   "usage": "dev checkDependency"
+# }
 sf mypim run script -o $DefaultAlias -f ~/DevOps/cb_js/happysoup.js dependency

@@ -1,3 +1,8 @@
+# {
+#   "name": "checkUserCustomPermission",
+#   "description": "Check which custom permissions the given user can access",
+#   "usage": "dev checkUserCustomPermission <userId>"
+# }
 userId=$1
 
 if [ -z $userId ]; then

@@ -1,3 +1,8 @@
+# {
+#   "name": "checkUserFieldAccess",
+#   "description": "Check if the given user can access the field of this object api name in the defauilt org",
+#   "usage": "dev checkUserFieldAccess <userId> <objectApiName> <fieldName>"
+# }
 userId=$1
 objectApiName=$2
 fieldName=$3

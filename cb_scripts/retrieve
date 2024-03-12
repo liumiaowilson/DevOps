@@ -1,3 +1,8 @@
+# {
+#   "name": "retrieve",
+#   "description": "Retrieve all metadata to the current directory",
+#   "usage": "dev retrieve ."
+# }
 dir=$1
 
 sfdx force:mdapi:retrieve -k $dir/package.xml -u $DefaultAlias -r $dir/

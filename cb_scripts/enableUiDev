@@ -1,4 +1,8 @@
-#!/bin/sh
+# {
+#   "name": "enableUiDev",
+#   "description": "Enable UI Dev mode for the current user",
+#   "usage": "dev enableUiDev"
+# }
 alias=$DefaultAlias
 
 sf mypim run script -o $alias -f ~/DevOps/cb_js/enableUiDev.js $@

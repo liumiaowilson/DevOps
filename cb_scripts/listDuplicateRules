@@ -1,3 +1,8 @@
+# {
+#   "name": "listDuplicateRules",
+#   "description": "List all duplicate rules for the given object",
+#   "usage": "dev listDuplicateRules <objectApiName>"
+# }
 objectApiName=$1
 
 if [ -z $objectApiName ]; then

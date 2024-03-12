@@ -1,3 +1,8 @@
+# {
+#   "name": "usersOfGroup",
+#   "description": "List all the users that belong to this given group",
+#   "usage": "dev usersOfGroup <groupId>"
+# }
 groupId=$1
 
 if [ -z $groupId ]; then

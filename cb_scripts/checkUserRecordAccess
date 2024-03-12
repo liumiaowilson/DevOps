@@ -1,3 +1,8 @@
+# {
+#   "name": "checkUserRecordAccess",
+#   "description": "Check if the user has access to this record",
+#   "usage": "dev checkUserRecordAccess <userId> <recordId>"
+# }
 userId=$1
 recordId=$2
 

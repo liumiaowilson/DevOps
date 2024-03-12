@@ -1,3 +1,8 @@
+# {
+#   "name": "checkUserObjectAccess",
+#   "description": "Check if this given user can access this object",
+#   "usage": "dev checkUserObjectAccess <userId> <objectApiName>"
+# }
 userId=$1
 objectApiName=$2
 

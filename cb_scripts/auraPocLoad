@@ -1,2 +1,7 @@
+# {
+#   "name": "auraPocLoad",
+#   "description": "Load Aura POC into a local project and open this project",
+#   "usage": "dev auraPocLoad"
+# }
 sf mypim run script -o $DefaultAlias -f ~/DevOps/cb_js/auraPocLoad.js
 code-server ~/AuraPoc

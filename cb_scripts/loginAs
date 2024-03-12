@@ -1,5 +1,8 @@
-#!/bin/sh
-user=$1
+# {
+#   "name": "loginAs",
+#   "description": "Login as selected user in the default org",
+#   "usage": "dev loginAs"
+# }
 alias=$DefaultAlias
 
-sf mypim run script -o $alias -f ~/DevOps/cb_js/loginAs.js $user
+sf mypim run script -o $alias -f ~/DevOps/cb_js/loginAs.js

@@ -1,2 +1,7 @@
+# {
+#   "name": "lwcPocLoad",
+#   "description": "Load the LWC Poc into the local project and open it",
+#   "usage": "dev lwcPocLoad"
+# }
 sf mypim run script -o $DefaultAlias -f ~/DevOps/cb_js/lwcPocLoad.js
 code-server ~/LwcPoc

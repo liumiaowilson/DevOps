@@ -1,3 +1,8 @@
+# {
+#   "name": "texeiImport",
+#   "description": "Import all practifi component jsons using texei",
+#   "usage": "dev texeiImport"
+# }
 mkdir ~/practifi/data/texei/pipeline
 echo '{"records":[]}' > ~/practifi/data/texei/pipeline/1-practifi__Component__c.json
 echo '{"records":[]}' > ~/practifi/data/texei/pipeline/2-practifi__Component_Relation__c.json

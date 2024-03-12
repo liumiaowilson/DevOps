@@ -1,3 +1,8 @@
+# {
+#   "name": "listSystemValidations",
+#   "description": "List all system validations(field constraints) for the given object",
+#   "usage": "dev listSystemValidations <objectApiName>"
+# }
 objectApiName=$1
 
 if [ -z $objectApiName ]; then

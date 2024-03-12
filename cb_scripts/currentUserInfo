@@ -1,2 +1,7 @@
+# {
+#   "name": "currentUserInfo",
+#   "description": "Print the current user id",
+#   "usage": "dev currentUserInfo"
+# }
 username=`sf org display -o $DefaultAlias --verbose --json | jq -r .result.username`
 sf data query -o $DefaultAlias -q "SELECT Id, Username FROM User WHERE Username = '"$username"'"

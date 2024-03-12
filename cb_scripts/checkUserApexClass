@@ -1,3 +1,8 @@
+# {
+#   "name": "checkUserApexClass",
+#   "description": "Check which apex classes the given user can access",
+#   "usage": "dev checkUserApexClass <userId>"
+# }
 userId=$1
 
 if [ -z $userId ]; then

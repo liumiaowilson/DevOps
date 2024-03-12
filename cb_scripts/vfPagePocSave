@@ -1,1 +1,6 @@
+# {
+#   "name": "vfPagePocSave",
+#   "description": "Save the visualforce page POC from the local project",
+#   "usage": "dev vfPagePocSave"
+# }
 sf mypim run script -o $DefaultAlias -f ~/DevOps/cb_js/vfPagePocSave.js

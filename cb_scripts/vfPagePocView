@@ -1,3 +1,8 @@
+# {
+#   "name": "vfPagePocView",
+#   "description": "View the visualforce page POC from the local project",
+#   "usage": "dev vfPagePocView"
+# }
 sf project deploy start -o $DefaultAlias --metadata-dir ~/VfPagePoc/
 instanceUrl=`sf org display -o $DefaultAlias --verbose --json | jq -r .result.instanceUrl`
 python -m webbrowser $instanceUrl"/apex/TestVfPagePOC4735"

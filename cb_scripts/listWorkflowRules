@@ -1,3 +1,8 @@
+# {
+#   "name": "listWorkflowRules",
+#   "description": "List all workflow rules for the given object",
+#   "usage": "dev listWorkflowRules <objectApiName>"
+# }
 objectApiName=$1
 
 if [ -z $objectApiName ]; then

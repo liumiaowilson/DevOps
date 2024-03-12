@@ -1,3 +1,8 @@
+# {
+#   "name": "instanceUrl",
+#   "description": "Copy the current instance url to the clipboard",
+#   "usage": "dev instanceUrl"
+# }
 sf org display -o $DefaultAlias --verbose --json | jq -r .result.instanceUrl > ~/clipboard
 cat ~/clipboard
 echo '{"command": "multiclip.fileToClipboard"}' | websocat ws://localhost:$REMOTE_CONTROL_PORT

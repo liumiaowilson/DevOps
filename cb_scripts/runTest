@@ -1,5 +1,8 @@
-#!/bin/sh
-
+# {
+#   "name": "runTest",
+#   "description": "Run the apex test class",
+#   "usage": "dev runTest <className>"
+# }
 if [ -z $1 ]; then
     echo 'Class name is required'
 fi

@@ -1,3 +1,8 @@
+# {
+#   "name": "call",
+#   "description": "Run an apex script in the default org and retrieve the returned result",
+#   "usage": "dev call <apex_script_path>"
+# }
 if [ -z $1 ]; then
     echo 'Path is required'
     exit 0

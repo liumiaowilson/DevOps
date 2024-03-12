@@ -1,3 +1,8 @@
+# {
+#   "name": "copyFileToClipboard",
+#   "description": "Copy the file content to the clipboard",
+#   "usage": "dev copyFileToClipboard <path>"
+# }
 path=$1
 
 if [ -z $path ]; then

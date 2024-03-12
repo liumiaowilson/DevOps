@@ -1,3 +1,8 @@
+# {
+#   "name": "listAssignmentRules",
+#   "description": "List all assignment rules for the given object",
+#   "usage": "dev listAssignmentRules <objectApiName>"
+# }
 objectApiName=$1
 
 if [ -z $objectApiName ]; then

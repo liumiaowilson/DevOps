@@ -1,3 +1,8 @@
+# {
+#   "name": "deleteRecords",
+#   "description": "Delete all records matching the query",
+#   "usage": "dev deleteRecords <query>"
+# }
 query="$@"
 
 sf mypim run script -o $DefaultAlias -f ~/DevOps/cb_js/deleteRecords.js "$query"

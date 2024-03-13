@@ -1,0 +1,137 @@
+{
+    "practifi__Process_Type__c": {
+        "orderByField": "Name",
+        "orderByDirection": "ASC",
+        "childRelationships": [
+            "practifi__Process_Stages__r",
+            "practifi__Pinned_Active_Form_Sections__r",
+            "practifi__Available_Workflows__r",
+            "practifi__Process_Tasks__r",
+            "practifi__Rule_Criteria__r"
+        ]
+    },
+    "practifi__Process_Task__c": {
+        "orderByField": "practifi__Order__c",
+        "orderByDirection": "ASC",
+        "childRelationships": [
+            "practifi__From_Task_Actions__r",
+            "practifi__Active_Form_Screens__r",
+            "practifi__Active_Form_Field_Sections__r",
+            "practifi__Active_Form_Fields__r",
+            "practifi__Active_Form_Task_Settings__r",
+            "practifi__Active_Form_Flows__r",
+            "practifi__Active_Form_Variables__r",
+            "practifi__Available_Workflows__r",
+            "practifi__Deliverable_Types__r",
+            "practifi__Preset_Checklist_Items__r"
+        ]
+    },
+    "practifi__Process_Stage__c": {
+        "orderByField": "practifi__Order__c",
+        "orderByDirection": "ASC"
+    },
+    "practifi__Task_Outcome__c": {
+        "orderByField": "practifi__Order__c",
+        "orderByDirection": "ASC"
+    },
+    "practifi__Action__c": {
+        "orderByField": "practifi__Order__c",
+        "orderByDirection": "ASC",
+        "childRelationships": [
+            "practifi__Action_Field_Values__r",
+            "practifi__Active_Form_Field_Assignments__r"
+        ]
+    },
+    "practifi__Active_Form_Screen__c": {
+        "orderByField": "practifi__Order__c",
+        "orderByDirection": "ASC",
+        "childRelationships": [
+            "practifi__Active_Form_Field_Sections__r"
+        ]
+    },
+    "practifi__Active_Form_Field_Section__c": {
+        "orderByField": "practifi__Order__c",
+        "orderByDirection": "ASC",
+        "childRelationships": [
+            "practifi__Active_Form_Display_Criteria_List__r",
+            "practifi__Active_Form_Tables__r",
+            "practifi__Active_Form_Fields__r",
+            "practifi__Active_Form_Prompts__r"
+        ]
+    },
+    "practifi__Active_Form_Table__c": {
+        "orderByField": "practifi__Order__c",
+        "orderByDirection": "ASC",
+        "childRelationships": [
+            "practifi__Active_Form_Fields__r"
+        ]
+    },
+    "practifi__Active_Form_Field__c": {
+        "orderByField": "practifi__Order__c",
+        "orderByDirection": "ASC",
+        "childRelationships": [
+            "practifi__Active_Form_Display_Criteria_List__r",
+            "practifi__Active_Form_Validation_Rules__r"
+        ]
+    },
+    "practifi__Active_Form_Prompt__c": {
+        "orderByField": "practifi__Order__c",
+        "orderByDirection": "ASC",
+        "childRelationships": [
+        ]
+    },
+    "practifi__Active_Form_Validation_Rule__c": {
+        "orderByField": "Name",
+        "orderByDirection": "ASC"
+    },
+    "practifi__Action_Field_Value__c": {
+        "orderByField": "Name",
+        "orderByDirection": "ASC"
+    },
+    "practifi__Active_Form_Field_Assignment__c": {
+        "orderByField": "Name",
+        "orderByDirection": "ASC"
+    },
+    "practifi__Active_Form_Task_Settings__c": {
+        "orderByField": "practifi__Order__c",
+        "orderByDirection": "ASC"
+    },
+    "practifi__Available_Workflow__c": {
+        "orderByField": "Name",
+        "orderByDirection": "ASC"
+    },
+    "practifi__Active_Form_Display_Criteria__c": {
+        "orderByField": "Name",
+        "orderByDirection": "ASC"
+    },
+    "practifi__Rule_Criteria__c": {
+        "orderByField": "Name",
+        "orderByDirection": "ASC",
+        "childRelationships": [
+            "practifi__Rule_Actions__r"
+        ]
+    },
+    "practifi__Rule_Action__c": {
+        "orderByField": "Name",
+        "orderByDirection": "ASC"
+    },
+    "practifi__Active_Form_Flow__c": {
+        "orderByField": "Name",
+        "orderByDirection": "ASC"
+    },
+    "practifi__Active_Form_Variable__c": {
+        "orderByField": "Name",
+        "orderByDirection": "ASC"
+    },
+    "practifi__Deliverable_Type__c": {
+        "orderByField": "Name",
+        "orderByDirection": "ASC",
+        "childRelationships": [
+            "practifi__Rule_Criteria__r"
+        ]
+    },
+    "practifi__Preset_Checklist_Item__c": {
+        "orderByField": "practifi__Order__c",
+        "orderByDirection": "ASC"
+    }
+}

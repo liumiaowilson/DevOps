@@ -1,0 +1,8 @@
+# {
+#   "name": "loginCommunity",
+#   "description": "Login as selected user in the community",
+#   "usage": "dev loginCommunity"
+# }
+alias=$DefaultAlias
+
+sf mypim run script -o $alias -f ~/DevOps/cb_js/loginCommunity.js

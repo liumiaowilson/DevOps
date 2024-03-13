@@ -1,5 +1,6 @@
 (function(cmd, context) {
-    const patchFile = '/home/codebuilder/.local/share/sf/client/current/node_modules/@oclif/core/lib/config/ts-node.js';
+    const homeDir = context.env.getString('CODE_BUILDER_HOME');
+    const patchFile = homeDir + '/.local/share/sf/client/current/node_modules/@oclif/core/lib/config/ts-node.js';
     context.fs.readFile(patchFile, 'utf8').then(content => {
         const lines = content.split('\n');
         const index = lines.findIndex(line => line.includes('linked ESM module'));

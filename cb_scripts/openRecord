@@ -1,7 +1,7 @@
 # {
-#   "name": "id",
+#   "name": "openRecord",
 #   "description": "Open the record page with the given recordId in the default org",
-#   "usage": "dev id <recordId>"
+#   "usage": "dev openRecord <recordId>"
 # }
 recordId=$1
 

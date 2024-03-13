@@ -2,7 +2,7 @@
     const pageName = 'TestVfPagePOC4735';
     const controllerName = pageName + 'Controller';
     const fileName = pageName[0].toLowerCase() + pageName.substring(1);
-    const homeDir = '/home/codebuilder/';
+    const homeDir = context.env.getString('CODE_BUILDER_HOME') + '/';
     const projectName = 'VfPagePoc';
 
     return context.fs.readFile(homeDir + projectName + '/setting.json', 'utf8').then(content => {

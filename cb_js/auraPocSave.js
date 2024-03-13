@@ -1,7 +1,7 @@
 (function(cmd, context) {
     const auraName = 'testAuraPOC1542';
     const fileName = auraName;
-    const homeDir = '/home/codebuilder/';
+    const homeDir = context.env.getString('CODE_BUILDER_HOME') + '/';
     const projectName = 'AuraPoc';
 
     return context.fs.readFile(homeDir + projectName + '/setting.json', 'utf8').then(content => {

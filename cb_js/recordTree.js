@@ -35,11 +35,13 @@
         return tree;
     };
 
+    const homeDir = context.env.getString('CODE_BUILDER_HOME');
+
     return context.require('chalk').then(({ default: chalk }) => {
         return Promise.all([
             context.fs.readFile(path, 'utf8'),
-            context.fs.readFile('/home/codebuilder/DevOps/js/recordTree.js', 'utf8'),
-            context.fs.readFile('/home/codebuilder/keyPrefix.json', 'utf8'),
+            context.fs.readFile(homeDir + '/DevOps/js/recordTree.js', 'utf8'),
+            context.fs.readFile(homeDir + '/keyPrefix.json', 'utf8'),
         ]).then(([ dataJSON, renderersScript, keyPrefixJSON ]) => {
             const data = JSON.parse(dataJSON);
             const renderers = eval(renderersScript);

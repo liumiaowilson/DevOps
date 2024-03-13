@@ -5,6 +5,6 @@ if [ -z $link ]; then
     exit 0
 fi
 
-alias=`cat /home/codebuilder/.sfdx/sfdx-config.json | jq -r .defaultusername`
+alias=`cat ~/.sfdx/sfdx-config.json | jq -r .defaultusername`
 
-sf mypim run script -o $alias -f /home/codebuilder/DevOps/cb_js/resolveLink.js $link
+sf mypim run script -o $alias -f ~/DevOps/cb_js/resolveLink.js $link

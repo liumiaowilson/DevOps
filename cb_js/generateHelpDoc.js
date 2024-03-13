@@ -1,5 +1,6 @@
 (function(cmd, context) {
-    const root = '/home/codebuilder/DevOps/cb_scripts/';
+    const homeDir = context.env.getString('CODE_BUILDER_HOME');
+    const root = homeDir + '/DevOps/cb_scripts/';
     return context.fs.readdir(root).then(filenames => {
         return Promise.all(filenames.map(filename => {
             return context.fs.readFile(root + filename, 'utf8').then(content => {

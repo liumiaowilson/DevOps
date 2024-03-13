@@ -5,10 +5,12 @@
         return;
     }
 
+    const homeDir = context.env.getString('CODE_BUILDER_HOME');
+
     return Promise.all([
-        context.fs.readFile('/home/codebuilder/keyPrefix.json', 'utf8'),
-        context.fs.readFile('/home/codebuilder/apps.json', 'utf8'),
-        context.fs.readFile('/home/codebuilder/DevOps/json/apps.json', 'utf8'),
+        context.fs.readFile(homeDir + '/keyPrefix.json', 'utf8'),
+        context.fs.readFile(homeDir + '/apps.json', 'utf8'),
+        context.fs.readFile(homeDir + '/DevOps/json/apps.json', 'utf8'),
     ]).then(([ keyPrefixJSON, appsJSON, userAppsJSON ]) => {
         const keyPrefixMap = JSON.parse(keyPrefixJSON);
         const appsMap = JSON.parse(appsJSON);

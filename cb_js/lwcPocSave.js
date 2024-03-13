@@ -1,7 +1,7 @@
 (function(cmd, context) {
     const lwcName = 'TestLwcPOC4921';
     const fileName = lwcName[0].toLowerCase() + lwcName.substring(1);
-    const homeDir = '/home/codebuilder/';
+    const homeDir = context.env.getString('CODE_BUILDER_HOME') + '/';
     const projectName = 'LwcPoc';
 
     return context.fs.readFile(homeDir + projectName + '/setting.json', 'utf8').then(content => {

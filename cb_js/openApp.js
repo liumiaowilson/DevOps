@@ -5,7 +5,8 @@
         return;
     }
 
-    return context.fs.readFile('/home/codebuilder/apps.json', 'utf8').then(appsJSON => {
+    const homeDir = context.env.getString('CODE_BUILDER_HOME');
+    return context.fs.readFile(homeDir + '/apps.json', 'utf8').then(appsJSON => {
         const appsMap = JSON.parse(appsJSON);
         const appId = appsMap[appName];
         if(!appId) {

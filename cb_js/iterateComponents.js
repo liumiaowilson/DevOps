@@ -33,10 +33,12 @@ const iterate = (json, fn, context) => {
         return;
     }
 
+    const homeDir = context.env.getString('CODE_BUILDER_HOME');
+
     context.ux.action.start('Processing components');
     return context.fs.readFile(path, 'utf8').then(callbackContent => {
         const callbackFn = eval(callbackContent);
-        const rootDir = '/home/codebuilder/practifi/data/texei/components';
+        const rootDir = homeDir + '/practifi/data/texei/components';
         return context.fs.readdir(rootDir).then(dirs => {
             const cmpTypes = [];
             for(const dir of dirs) {

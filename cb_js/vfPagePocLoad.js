@@ -3,7 +3,7 @@
     const pageName = 'TestVfPagePOC4735';
     const controllerName = pageName + 'Controller';
     const fileName = pageName[0].toLowerCase() + pageName.substring(1);
-    const homeDir = '/home/codebuilder/';
+    const homeDir = context.env.getString('CODE_BUILDER_NAME') + '/';
     const projectName = 'VfPagePoc';
 
     const packageXml = `<?xml version="1.0" encoding="UTF-8"?>

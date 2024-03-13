@@ -2,7 +2,7 @@
     const NONE = '--None--';
     const lwcName = 'TestLwcPOC4921';
     const fileName = lwcName[0].toLowerCase() + lwcName.substring(1);
-    const homeDir = '/home/codebuilder/';
+    const homeDir = context.env.getString('CODE_BUILDER_HOME') + '/';
     const projectName = 'LwcPoc';
 
     const packageXml = `<?xml version="1.0" encoding="UTF-8"?>

@@ -5,11 +5,12 @@
         return;
     }
 
-    return context.fs.readFile('/home/codebuilder/keyPrefix.json', 'utf8').then(keyPrefixJSON => {
+    const homeDir = context.env.getString('CODE_BUILDER_HOME');
+    return context.fs.readFile(homeDir + '/keyPrefix.json', 'utf8').then(keyPrefixJSON => {
         const prefixMap = JSON.parse(keyPrefixJSON);
 
         const objectApiName = prefixMap[recordId.substring(0, 3)];
-        const queryFile = '/home/codebuilder/DevOps/soql/' + objectApiName + '.soql';
+        const queryFile = homeDir + '/DevOps/soql/' + objectApiName + '.soql';
 
         return context.fs.readFile(queryFile, 'utf8').then(query => {
             query = query.replaceAll('{{recordId}}', recordId);

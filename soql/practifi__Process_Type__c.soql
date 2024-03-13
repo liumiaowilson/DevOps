@@ -8,10 +8,15 @@ SELECT
     ),
     (
         SELECT
-            Id, Name,
+            Id, Name, practifi__Visibility_Rule__c,
             (
                 SELECT
-                    Id, Name,
+                    Id, Name, practifi__Type__c,
+                    practifi__Required__c,
+                    practifi__Prefill_This_Field__c,
+                    practifi__Display_To__c,
+                    practifi__Visibility_Rule__c,
+                    practifi__Display_This_Field_If__c,
                     (
                         SELECT
                             Id, Name
@@ -34,7 +39,7 @@ SELECT
         SELECT
             Id, practifi__Subject__c,
             (
-                SELECT Id, Name
+                SELECT Id, Name, practifi__Execution_Rule__c
                 FROM practifi__From_Task_Actions__r
                 ORDER BY practifi__Order__c ASC
             ),

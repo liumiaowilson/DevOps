@@ -1,0 +1,21 @@
+# {
+#   "name": "iterateRecordTree",
+#   "description": "Iterate the related records in a tree using given script",
+#   "usage": "dev iterateRecordTree <recordId> <scriptPath>"
+# }
+recordId=$1
+scriptPath=$2
+
+if [ -z $recordId ]; then
+    echo 'Record Id is required'
+    exit 0
+fi
+
+if [ -z $scriptPath ]; then
+    echo 'Script Path is required'
+    exit 0
+fi
+
+sf mypim run script -o $DefaultAlias -f ~/DevOps/cb_js/generateRecordQuery.js $recordId > ~/tmp.soql
+sf mypim run script -o $DefaultAlias -f ~/DevOps/cb_js/deepQuery.js ~/tmp.soql > ~/result.json
+sf mypim run script -o $DefaultAlias -f ~/DevOps/cb_js/iterateRecordTree.js ~/result.json $scriptPath

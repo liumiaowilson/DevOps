@@ -30,32 +30,33 @@ class Node {
         this.ast = clone(ast);
         this.ast.fields = this.ast.fields.filter(field => field.type !== 'FieldSubquery');
 
-        const fieldsAllField = this.ast.fields.find(field => field.type === 'FieldFunctionExpression'
-            && field.functionName === 'FIELDS'
-            && field.parameters[0] === 'All'
-        )
-        if(fieldsAllField) {
-            this.ast.fields = globalDescribes[this.ast.sObject].fields.map(field => {
-                return {
-                    type: 'Field',
-                    field: field.name,
-                };
-            });
-        }
-
-        this.parentFieldName = parentFieldName;
-
-        if(this.parentFieldName && !this.ast.fields.find(field => field.field === this.parentFieldName)) {
-            this.ast.fields.push({
-                type: 'Field',
-                field: this.parentFieldName,
-            });
-        }
-
-        const subQueries = ast.fields.filter(field => field.type === 'FieldSubquery');
         const objectApiName = this.ast.sObject;
 
         return getDescribe(objectApiName, this.connection).then(objDescribe => {
+            const fieldsAllField = this.ast.fields.find(field => field.type === 'FieldFunctionExpression'
+                && field.functionName === 'FIELDS'
+                && field.parameters[0] === 'All'
+            )
+            if(fieldsAllField) {
+                this.ast.fields = globalDescribes[this.ast.sObject].fields.map(field => {
+                    return {
+                        type: 'Field',
+                        field: field.name,
+                    };
+                });
+            }
+
+            this.parentFieldName = parentFieldName;
+
+            if(this.parentFieldName && !this.ast.fields.find(field => field.field === this.parentFieldName)) {
+                this.ast.fields.push({
+                    type: 'Field',
+                    field: this.parentFieldName,
+                });
+            }
+
+            const subQueries = ast.fields.filter(field => field.type === 'FieldSubquery');
+
             const childRelationshipMap = {};
             for(const childRelationship of objDescribe.childRelationships) {
                 if(!childRelationship.relationshipName) continue;

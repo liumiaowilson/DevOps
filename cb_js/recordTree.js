@@ -11,16 +11,7 @@
         const renderer = renderers[objectApiName];
 
         if(!renderer) {
-            for(const key of Object.keys(record)) {
-                if(key === 'Id') continue;
-
-                const value = record[key];
-                if(value && typeof value === 'string') {
-                    return value;
-                }
-            }
-
-            return record.Id;
+            return record.Name;
         }
         else {
             return renderer(record);

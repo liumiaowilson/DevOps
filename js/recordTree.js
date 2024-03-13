@@ -38,4 +38,8 @@
 
         return record.Name + (tags.length ? `[${tags.join('')}]` : '');
     },
+
+    practifi__Process_Task__c: function(record) {
+        return record.practifi__Subject__c;
+    },
 })

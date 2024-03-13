@@ -30,10 +30,10 @@ fi
 
 export BinDir=`echo $BinDir | sed 's/\(.*\)\/.*/\1/'`
 
-if [ $SF_CONTAINER_MODE = "true" ]; then
-    export ScriptsDir=$BinDir/cb_scripts
-else
+if [ -z $CODE_BUILDER_HOME ]; then
     export ScriptsDir=$BinDir/scripts
+else
+    export ScriptsDir=$BinDir/cb_scripts
 fi
 
 _help() {

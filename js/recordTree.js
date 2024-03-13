@@ -36,7 +36,9 @@
             tags.push('?');
         }
 
-        return record.Name + (tags.length ? `[${tags.join('')}]` : '');
+        return record.Name +
+            (record.practifi__Action_Type__c ? `[${record.practifi__Action_Type__c}]` : '') +
+            (tags.length ? `[${tags.join('')}]` : '');
     },
 
     practifi__Process_Task__c: function(record) {

@@ -32,8 +32,4 @@ url="https://bitbucket.org/$remote/pull-requests/new?source=$remote::$branch&des
 
 echo $url
 
-if [ $CODE_BUILDER_USER != '' ] ; then
-    python -m webbrowser $url
-else
-    open $url
-fi
+open $url

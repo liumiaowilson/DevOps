@@ -1,5 +1,19 @@
 const clone = obj => JSON.parse(JSON.stringify(obj));
 
+const globalDescribes = {};
+
+const getDescribe = (objectApiName, connection) => {
+    if(globalDescribes[objectApiName]) {
+        return Promise.resolve(globalDescribes[objectApiName]);
+    }
+    else {
+        return connection.describe(objectApiName).then(objDescribe => {
+            globalDescribes[objectApiName] = objDescribe;
+            return objDescribe;
+        });
+    }
+};
+
 class Node {
     constructor(connection, soqlParser, cmd) {
         this.connection = connection;
@@ -15,6 +29,20 @@ class Node {
     init(ast, parentFieldName) {
         this.ast = clone(ast);
         this.ast.fields = this.ast.fields.filter(field => field.type !== 'FieldSubquery');
+
+        const fieldsAllField = this.ast.fields.find(field => field.type === 'FieldFunctionExpression'
+            && field.functionName === 'FIELDS'
+            && field.parameters[0] === 'All'
+        )
+        if(fieldsAllField) {
+            this.ast.fields = globalDescribes[this.ast.sObject].fields.map(field => {
+                return {
+                    type: 'Field',
+                    field: field.name,
+                };
+            });
+        }
+
         this.parentFieldName = parentFieldName;
 
         if(this.parentFieldName && !this.ast.fields.find(field => field.field === this.parentFieldName)) {
@@ -27,7 +55,7 @@ class Node {
         const subQueries = ast.fields.filter(field => field.type === 'FieldSubquery');
         const objectApiName = this.ast.sObject;
 
-        return this.connection.describe(objectApiName).then(objDescribe => {
+        return getDescribe(objectApiName, this.connection).then(objDescribe => {
             const childRelationshipMap = {};
             for(const childRelationship of objDescribe.childRelationships) {
                 if(!childRelationship.relationshipName) continue;
@@ -116,12 +144,14 @@ class Node {
         return context.require('soql-parser-js').then(({ default: soqlParser }) => {
             const ast = soqlParser.parseQuery(query);
             const root = new Node(context.connection, soqlParser, cmd);
-            return root.init(ast, null).then(() => {
-                root.reconcile();
+            return getDescribe(ast.sObject, context.connection).then(() => {
+                return root.init(ast, null).then(() => {
+                    root.reconcile();
 
-                cmd.log(JSON.stringify(root.data, null, 4));
+                    cmd.log(JSON.stringify(root.data, (key, value) => value !== null ? value : undefined, 4));
 
-                return root.data;
+                    return root.data;
+                });
             });
         });
     }).finally(() => context.ux.action.stop());

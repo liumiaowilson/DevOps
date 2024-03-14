@@ -5,7 +5,7 @@
         return;
     }
 
-    const getRecordName = (record, keyPrefixMap, renderers) => {
+    const getRecordName = (record, keyPrefixMap, renderers, parentRecord, parentKey) => {
         const keyPrefix = record.Id.substring(0, 3);
         const objectApiName = keyPrefixMap[keyPrefix];
         const renderer = renderers[objectApiName];
@@ -14,7 +14,7 @@
             return record.Name;
         }
         else {
-            return renderer(record);
+            return renderer(record, parentRecord, parentKey);
         }
     };
 
@@ -26,8 +26,11 @@
             if(value && value.records) {
                 for(const childRecord of value.records) {
                     const childTree = buildRecordTree(childRecord, context, chalk, keyPrefixMap, renderers);
-                    const name = chalk.dim('(' + key + ')') + chalk.green(getRecordName(childRecord, keyPrefixMap, renderers)) + '[m://' + childRecord.Id + ']';
-                    tree.insert(name, childTree);
+                    const recordName = getRecordName(childRecord, keyPrefixMap, renderers, record, key);
+                    if(recordName) {
+                        const name = chalk.dim('(' + key + ')') + chalk.green(recordName) + '[m://' + childRecord.Id + ']';
+                        tree.insert(name, childTree);
+                    }
                 }
             }
         });
@@ -50,8 +53,11 @@
             const root = context.ux.tree();
             for(const record of data.records) {
                 const tree = buildRecordTree(record, context, chalk, keyPrefixMap, renderers);
-                const name = chalk.green(getRecordName(record, keyPrefixMap, renderers)) + '[m://' + record.Id + ']';
-                root.insert(name, tree);
+                const recordName = getRecordName(record, keyPrefixMap, renderers, null, null);
+                if(recordName) {
+                    const name = chalk.green(recordName) + '[m://' + record.Id + ']';
+                    root.insert(name, tree);
+                }
             }
 
             root.display();

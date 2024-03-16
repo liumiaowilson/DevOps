@@ -13,7 +13,7 @@
 
     context.ux.action.start('Publish to MyPIM');
     return context.fs.readFile(filePath, 'utf8').then(fileContent => {
-        return context.mypim.query(`SELECT Id FROM Item__c WHERE Type__c = 'File' AND Name = '${fileName}'`).then(data => {
+        return context.mypim.query(`SELECT Id FROM Item__c WHERE Type__c = 'File' AND Name = '${fileName}' AND Source__c LIKE '/public/%'`).then(data => {
             if(data.records.length) {
                 return context.mypim.sobject('Item__c').update({
                     Id: data.records[0].Id,

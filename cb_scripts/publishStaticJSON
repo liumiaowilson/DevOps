@@ -1,0 +1,20 @@
+# {
+#   "name": "publishStaticJSON",
+#   "description": "Generate a public server url to reply this static json",
+#   "usage": "dev publishStaticJSON <name> <filePath>"
+# }
+name=$1
+filePath=$2
+
+if [ -z $name ]; then
+    echo 'Name is required'
+    exit 0
+fi
+
+if [ -z $filePath ]; then
+    echo 'File Path is required'
+    exit 0
+fi
+sf mypim run script -o $DefaultAlias -f ~/DevOps/cb_js/publishToMyPIM.js $name $filePath
+
+python -m webbrowser "https://mypim.my.salesforce-sites.com/public/services/apexrest/file_public/"$name

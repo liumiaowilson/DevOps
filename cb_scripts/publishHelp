@@ -1,0 +1,7 @@
+# {
+#   "name": "publishHelp",
+#   "description": "Generate help content and publish it to MyPIM",
+#   "usage": "dev publishHelp"
+# }
+sf mypim run script -o $DefaultAlias -f ~/DevOps/cb_js/generateHelpDoc.js >> ~/help
+sf mypim run script -o $DefaultAlias -f ~/DevOps/cb_js/publishToMyPIM.js codebuilder_dev_commands ~/help

@@ -1,3 +1,5 @@
+const LIMIT = 7500;
+
 const generatePackageXml = buffer => {
     const header = [
         '<?xml version="1.0" encoding="UTF-8"?>',
@@ -60,15 +62,15 @@ const generateTypes = types => {
             let count = 0;
             let buffer = [];
             for(const data of dataList) {
-                if(count + data.members.length > 10000) {
+                if(count + data.members.length > LIMIT) {
                     const part1 = {
                         name: data.name,
-                        members: data.members.slice(0, 10000 - count),
+                        members: data.members.slice(0, LIMIT - count),
                     };
 
                     const part2 = {
                         name: data.name,
-                        members: data.members.slice(10000 - count),
+                        members: data.members.slice(LIMIT - count),
                     };
 
                     if(part1.members.length) {

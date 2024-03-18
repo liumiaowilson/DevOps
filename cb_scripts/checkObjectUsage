@@ -1,0 +1,13 @@
+# {
+#   "name": "checkObjectUsage",
+#   "description": "Check which objects are referencing this given object",
+#   "usage": "dev checkObjectUsage <objectApiName>"
+# }
+objectApiName=$1
+
+if [ -z $objectApiName ]; then
+    echo 'Object Api Name is required'
+    exit 0
+fi
+
+sf mypim run script -o $DefaultAlias -f ~/DevOps/cb_js/checkObjectUsage.js $objectApiName

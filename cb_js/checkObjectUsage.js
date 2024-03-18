@@ -1,3 +1,5 @@
+const isValidObject = objectApiName => !objectApiName.endsWith('Share') && !objectApiName.endsWith('ChangeEvent') && !objectApiName.endsWith('Feed');
+
 (function(cmd, context) {
     const objectApiName = context.argv[0];
     if(!objectApiName) {
@@ -7,8 +9,7 @@
 
     context.ux.action.start('Calculating');
     return context.connection.describeGlobal().then(data => {
-        return Promise.all(data.sobjects.map(sobject => context.connection.describeSObject(sobject.name))).then(describeList => {
-            const referencing = [];
+        return Promise.all(data.sobjects.filter(sobject => isValidObject(sobject.name)).map(sobject => context.connection.describeSObject(sobject.name))).then(describeList => {
             const usageMap = {};
             describeList.forEach(describe => {
                 let nameField = null;
@@ -18,36 +19,67 @@
                     }
                 });
 
+                const defaultUsage = {
+                    objectApiName: describe.name,
+                    nameField: nameField,
+                    searchable: describe.searchable,
+                    fields: [],
+                    textFields: [],
+                    filterableTextFields: [],
+                };
+
                 describe.fields.forEach(field => {
+                    if(field.name === 'Name') {
+                        return;
+                    }
+
                     if(field.referenceTo && field.referenceTo.length) {
                         field.referenceTo.forEach(refTo => {
                             if(refTo === objectApiName) {
-                                referencing.push({
-                                    objectApiName: describe.name,
-                                    fieldName: field.name,
-                                });
-
-                                const usage = usageMap[describe.name] || ({ objectApiName: describe.name, nameField: nameField, fields: [] });
+                                const usage = usageMap[describe.name] || defaultUsage;
                                 usage.fields.push(field.name);
                                 usageMap[describe.name] = usage;
                             }
                         });
                     }
+                    else if((field.type === 'string' || field.type === 'textarea') && field.length >= 18) {
+                        const usage = usageMap[describe.name] || defaultUsage;
+                        usage.textFields.push(field.name);
+                        if(field.filterable) {
+                            usage.filterableTextFields.push(field.name);
+                        }
+                        usageMap[describe.name] = usage;
+                    }
                 });
             });
 
             const homeDir = context.env.getString('CODE_BUILDER_HOME');
-            return context.fs.writeFile(homeDir + '/objectUsage.json', JSON.stringify({
+            const result = {
                 target: objectApiName,
                 usage: usageMap,
-            }, null, 4)).then(() => {
+            };
+            return context.fs.writeFile(homeDir + '/objectUsage.json', JSON.stringify(result, null, 4)).then(() => {
+                const referencing = [];
+                Object.keys(usageMap).forEach(key => {
+                    const usage = usageMap[key];
+
+                    if(usage.fields.length) {
+                        referencing.push({
+                            objectApiName: usage.objectApiName,
+                            fieldNames: usage.fields.join(','),
+                        });
+                    }
+                });
+
                 cmd.styledHeader('Referencing');
                 context.ux.table(referencing, {
                     objectApiName: {},
-                    fieldName: {},
+                    fieldNames: {},
                 });
 
-                return referencing;
+                cmd.log('For more details, please see ~/objectUsage.json');
+
+                return result;
             });
         });
     }).finally(() => context.ux.action.stop());

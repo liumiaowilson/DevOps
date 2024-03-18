@@ -1,4 +1,8 @@
 const LIMIT = 7500;
+const ExcludedTypes = [
+    'CustomObjectTranslation',
+    'Translations',
+];
 
 const generatePackageXml = buffer => {
     const header = [
@@ -44,6 +48,10 @@ const generateTypes = types => {
     return context.connection.metadata.describe().then(data => {
         const orgNamespace = data.organizationNamespace;
         return Promise.all(data.metadataObjects.map(metadata => {
+            if(ExcludedTypes.includes(metadata.xmlName)) {
+                return;
+            }
+
             return context.connection.metadata.list([ { type: metadata.xmlName } ]).then(data => {
                 if(!data || !data.length) return;
 

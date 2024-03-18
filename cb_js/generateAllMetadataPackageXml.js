@@ -47,7 +47,7 @@ const generateTypes = types => {
 
                 const result = {
                     name: metadata.xmlName,
-                    members: data.filter(item => orgNamespace ? item.namespacePrefix === orgNamespace : !item.namespacePrefix).map(item => item.fullName),
+                    members: data.filter(item => item.namespacePrefix ? item.namespacePrefix === orgNamespace : true).map(item => item.fullName),
                 };
 
                 if(!result.members.length) return;

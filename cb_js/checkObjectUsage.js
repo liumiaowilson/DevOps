@@ -22,6 +22,7 @@ const isValidObject = objectApiName => !objectApiName.endsWith('Share') && !obje
                 const defaultUsage = {
                     objectApiName: describe.name,
                     nameField: nameField,
+                    queryable: describe.queryable,
                     searchable: describe.searchable,
                     fields: [],
                     textFields: [],

@@ -40,14 +40,19 @@ const generateTypes = types => {
 (function(cmd, context) {
     context.ux.action.start('Generating package.xml');
     return context.connection.metadata.describe().then(data => {
+        const orgNamespace = data.organizationNamespace;
         return Promise.all(data.metadataObjects.map(metadata => {
             return context.connection.metadata.list([ { type: metadata.xmlName } ]).then(data => {
                 if(!data || !data.length) return;
 
-                return {
+                const result = {
                     name: metadata.xmlName,
-                    members: data.map(item => item.fullName),
+                    members: data.filter(item => orgNamespace ? item.namespacePrefix === orgNamespace : !item.namespacePrefix).map(item => item.fullName),
                 };
+
+                if(!result.members.length) return;
+
+                return result;
             });
         })).then(dataList => {
             dataList = dataList.filter(Boolean);
@@ -55,11 +60,29 @@ const generateTypes = types => {
             let count = 0;
             let buffer = [];
             for(const data of dataList) {
-                if(count + data.members.length >= 10000) {
+                if(count + data.members.length > 10000) {
+                    const part1 = {
+                        name: data.name,
+                        members: data.members.slice(0, 10000 - count),
+                    };
+
+                    const part2 = {
+                        name: data.name,
+                        members: data.members.slice(10000 - count),
+                    };
+
+                    if(part1.members.length) {
+                        buffer.push(part1);
+                    }
                     buffers.push(buffer);
 
-                    count = data.members.length;
-                    buffer = [ data ];
+                    count = part2.members.length;
+                    if(count > 0) {
+                        buffer = [ part2 ];
+                    }
+                    else {
+                        buffer = [];
+                    }
                 }
                 else {
                     count += data.members.length;

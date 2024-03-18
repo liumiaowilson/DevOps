@@ -1,0 +1,8 @@
+# {
+#   "name": "findFlow",
+#   "description": "Find the flow in the target org",
+#   "usage": "dev findFlow"
+# }
+alias=$DefaultAlias
+
+sf mypim run script -o $alias -f ~/DevOps/cb_js/findFlow.js

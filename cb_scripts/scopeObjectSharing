@@ -1,0 +1,6 @@
+# {
+#   "name": "scopeObjectSharing",
+#   "description": "Generate a report of object OWD sharing settings from the given object api names",
+#   "usage": "dev scopeObjectSharing <objectApiNames>"
+# }
+sf mypim run script -o $DefaultAlias -f ~/DevOps/cb_js/scopeObjectSharing.js $@

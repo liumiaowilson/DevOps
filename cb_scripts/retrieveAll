@@ -1,0 +1,12 @@
+# {
+#   "name": "retrieveAll",
+#   "description": "Retrieve all metadata to the current directory, using all related package.xml files",
+#   "usage": "dev retrieveAll"
+# }
+mkdir -p src
+for f in `ls | grep ".xml"`;
+do
+    sf project retrieve start -o $DefaultAlias -x $f -t . -z
+    cp -r unpackaged/unpackaged/* src/
+    rm -rf unpackaged/unpackaged/*
+done

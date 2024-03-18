@@ -8,5 +8,5 @@ for f in `ls | grep ".xml"`;
 do
     sf project retrieve start -o $DefaultAlias -x $f -t . -z
     cp -r unpackaged/unpackaged/* src/
-    rm -rf unpackaged/unpackaged/*
+    rm -rf unpackaged
 done

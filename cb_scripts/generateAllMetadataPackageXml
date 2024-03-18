@@ -1,0 +1,6 @@
+# {
+#   "name": "generateAllMetadataPackageXml",
+#   "description": "Generate package.xml containing all metadata files",
+#   "usage": "dev generateAllMetadataPackageXml"
+# }
+sf mypim run script -o $DefaultAlias -f ~/DevOps/cb_js/generateAllMetadataPackageXml.js

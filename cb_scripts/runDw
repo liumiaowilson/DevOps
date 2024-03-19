@@ -1,0 +1,19 @@
+# {
+#   "name": "runDw",
+#   "description": "Run dataweave script",
+#   "usage": "dev runDw <scriptPath> <inputPath>"
+# }
+scriptPath=$1
+inputPath=$2
+
+if [ -z $scriptPath ]; then
+    echo 'Script Path is required'
+    exit 0
+fi
+
+if [ -z $inputPath ]; then
+    echo 'Input Path is required'
+    exit 0
+fi
+
+dw run -i payload=$inputPath -f $scriptPath

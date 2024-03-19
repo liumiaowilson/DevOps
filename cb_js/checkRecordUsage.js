@@ -30,7 +30,7 @@ const findByFields = (usageMap, recordId, cmd, context) => {
                             usage: usageList.join(','),
                         };
                     });
-                });
+                }).catch(error => []);
             })
     ).then(dataList => dataList.flat());
 };

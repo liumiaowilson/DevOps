@@ -156,15 +156,17 @@ const findByFilterableTextFields = (usageMap, recordId, cmd, context) => {
                 };
             });
 
-            context.ux.table(result, {
-                url: {},
-                type: {},
-                source: {},
-                name: {},
-                usage: {},
-            });
+            return context.fs.writeFile(homeDir + '/recordUsage.json', JSON.stringify(result, null, 4)).then(() => {
+                context.ux.table(result, {
+                    url: {},
+                    type: {},
+                    source: {},
+                    name: {},
+                    usage: {},
+                });
 
-            return result;
+                return result;
+            });
         });
     }).finally(() => context.ux.action.stop());
 })

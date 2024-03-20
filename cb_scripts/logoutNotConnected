@@ -1,0 +1,9 @@
+# {
+#   "name": "logoutNotConnected",
+#   "description": "Logout from all orgs that are not connected",
+#   "usage": "dev logoutNotConnected"
+# }
+for o in `sf org list --json | jq -r '[.result.other[], .result.sandboxes[], .result.nonScratchOrgs[], .result.devHubs[], .result.scratchOrgs[] | select(.connectedStatus != "Connected") | .alias] | unique | join(" ")'`
+do
+    sf org logout -o $o -p
+done

@@ -1,0 +1,14 @@
+# {
+#   "name": "getActiveFormDefinitionFromProcessTask",
+#   "description": "Get the active form definition from the process task by its record id",
+#   "usage": "dev getActiveFormDefinitionFromProcessTask <recordId>"
+# }
+recordId=$1
+
+if [ -z $recordId ]; then
+    echo 'Record Id is required'
+    exit 0
+fi
+
+sf mypim run script -o $DefaultAlias -f ~/DevOps/cb_js/mergeText.js ~/DevOps/apex/generateActiveFormDefinition.apex ~/test.apex "recordId="$recordId > /dev/null
+sf mypim run script -o $DefaultAlias -f ~/DevOps/cb_js/call.js ~/test.apex

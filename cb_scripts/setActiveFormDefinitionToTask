@@ -1,0 +1,19 @@
+# {
+#   "name": "setActiveFormDefinitionToTask",
+#   "description": "Save the active form definition to a task",
+#   "usage": "dev setActiveFormDefinitionToTask <recordId> <formJSONPath>"
+# }
+recordId=$1
+path=$2
+
+if [ -z $recordId ]; then
+    echo 'Record Id is required'
+    exit 0
+fi
+
+if [ -z $path ]; then
+    echo 'Form JSON Path is required'
+    exit 0
+fi
+
+sf mypim run script -o $DefaultAlias -f ~/DevOps/cb_js/setActiveFormDefinitionToTask.js $recordId $path

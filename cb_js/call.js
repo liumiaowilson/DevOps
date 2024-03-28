@@ -46,10 +46,14 @@
                 const cvId = data.records[0].Id;
                 const cdId = data.records[0].ContentDocumentId;
 
+                let result = null;
                 return context.connection.request(`/sobjects/ContentVersion/${cvId}/VersionData`).then(data => {
-                    cmd.log(JSON.stringify(JSON.parse(data), null, 4));
+                    result = JSON.parse(data);
+                    cmd.log(JSON.stringify(result, null, 4));
                 }).then(() => {
-                    return context.connection.sobject('ContentDocument').delete(cdId);
+                    return context.connection.sobject('ContentDocument').delete(cdId).then(() => {
+                        return result;
+                    });
                 });
             });
         }

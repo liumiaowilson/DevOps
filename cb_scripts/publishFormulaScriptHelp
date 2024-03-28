@@ -1,0 +1,7 @@
+# {
+#   "name": "publishFormulaScriptHelp",
+#   "description": "Generate FormulaScript help to MyPIM",
+#   "usage": "dev publishFormulaScriptHelp"
+# }
+sf mypim run script -o mypim -f ~/DevOps/cb_js/call.js ~/DevOps/apex/generateFormulaScriptHelp.apex --json | jq -r .result > ~/help
+sf mypim run script -o $DefaultAlias -f ~/DevOps/cb_js/publishToMyPIM.js formula_script_help ~/help

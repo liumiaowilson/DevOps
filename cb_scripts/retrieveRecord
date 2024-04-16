@@ -1,0 +1,13 @@
+# {
+#   "name": "retrieveRecord",
+#   "description": "Retrieve a record with given record id into json result",
+#   "usage": "dev retrieveRecord <recordId>"
+# }
+recordId=$1
+
+if [ -z $recordId ]; then
+    echo 'Record Id is required'
+    exit 0
+fi
+
+sf mypim run script -o $DefaultAlias -f ~/DevOps/cb_js/retrieveRecord.js $recordId

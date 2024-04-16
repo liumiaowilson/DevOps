@@ -1,0 +1,11 @@
+# {
+#   "name": "vlocityList",
+#   "description": "List available vlocity components for export",
+#   "usage": "dev vlocityList"
+# }
+if [ ! -f ./job.yaml ]; then
+    echo 'No job.yaml found'
+    exit 0
+fi
+
+vlocity packGetAllAvailableExports -job job.yaml -sfdx.username $DefaultAlias --json | jq -r '.records[].VlocityDataPackKey'

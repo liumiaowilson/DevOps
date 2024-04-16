@@ -1,0 +1,8 @@
+# {
+#   "name": "revealFolder",
+#   "description": "Open all the files in the folder in VSCode editor",
+#   "usage": "dev revealFolder <path>"
+# }
+path=$1
+
+code-server -r $path/*

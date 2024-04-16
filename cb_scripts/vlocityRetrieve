@@ -1,0 +1,18 @@
+# {
+#   "name": "vlocityRetrieve",
+#   "description": "Retrieve a single vlocity component",
+#   "usage": "dev vlocityRetrieve <key>"
+# }
+key=$1
+
+if [ -z $key ]; then
+    echo 'Key is required'
+    exit 0
+fi
+
+if [ ! -f ./job.yaml ]; then
+    echo 'No job.yaml found'
+    exit 0
+fi
+
+vlocity packExport -sfdx.username $DefaultAlias -job job.yaml -key $key

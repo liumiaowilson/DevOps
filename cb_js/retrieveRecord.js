@@ -28,6 +28,17 @@
                         return undefined;
                     }
 
+                    if(typeof value === 'string') {
+                        if((value.startsWith('{') && value.endsWith('}')) ||
+                            (value.startsWith('[') && value.endsWith(']'))) {
+                            try {
+                                value = JSON.parse(value);
+                            }
+                            catch(e) {
+                            }
+                        }
+                    }
+
                     return value;
                 }, 4));
 

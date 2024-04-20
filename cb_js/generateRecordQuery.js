@@ -21,32 +21,29 @@ class Node {
         const parentName = this.isRoot ? this.objectApiName : this.parentRelationshipName;
         const fields = [ 'Fields(All)' ];
         const recordTreeDef = this.recordTreeMap[this.objectApiName];
-        if(!recordTreeDef) {
-            this.cmd.error('Record tree json cannot find ' + this.objectApiName);
-            return;
-        }
+        if(recordTreeDef) {
+            const childRelationshipsDef = this.childRelationshipsMap[this.objectApiName];
 
-        const childRelationshipsDef = this.childRelationshipsMap[this.objectApiName];
+            if(recordTreeDef.childRelationships && recordTreeDef.childRelationships.length) {
+                for(const childRelationshipName of recordTreeDef.childRelationships) {
+                    const childObjectApiName = childRelationshipsDef[childRelationshipName];
+                    if(!childObjectApiName) {
+                        this.cmd.error('Referenced child relationship ' + childRelationshipName + ' has undefined object ' + childObjectApiName);
+                        return;
+                    }
 
-        if(recordTreeDef.childRelationships && recordTreeDef.childRelationships.length) {
-            for(const childRelationshipName of recordTreeDef.childRelationships) {
-                const childObjectApiName = childRelationshipsDef[childRelationshipName];
-                if(!childObjectApiName) {
-                    this.cmd.error('Referenced child relationship ' + childRelationshipName + ' has undefined object ' + childObjectApiName);
-                    return;
+                    const childNode = new Node(
+                        childObjectApiName,
+                        childRelationshipName,
+                        false,
+                        null,
+                        this.childRelationshipsMap,
+                        this.recordTreeMap,
+                        this.cmd
+                    );
+
+                    fields.push('(' + childNode.build() + ')');
                 }
-
-                const childNode = new Node(
-                    childObjectApiName,
-                    childRelationshipName,
-                    false,
-                    null,
-                    this.childRelationshipsMap,
-                    this.recordTreeMap,
-                    this.cmd
-                );
-
-                fields.push('(' + childNode.build() + ')');
             }
         }
 
@@ -57,7 +54,7 @@ class Node {
             query += ' WHERE ' + this.filter;
         }
 
-        if(recordTreeDef.orderByFieldName) {
+        if(recordTreeDef?.orderByFieldName) {
             query += ' ORDER BY ' + recordTreeDef.orderByFieldName + ' ' + (recordTreeDef.orderByFieldDirection || 'ASC');
         }
 

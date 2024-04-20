@@ -11,7 +11,7 @@
         const renderer = renderers[objectApiName];
 
         if(!renderer) {
-            return record.Name;
+            return record.Name || record.Subject;
         }
         else {
             return renderer(record, parentRecord, parentKey);

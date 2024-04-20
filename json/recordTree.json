@@ -1,4 +1,11 @@
 {
+    "Task": {
+        "orderByField": "Subject",
+        "orderByDirection": "ASC",
+        "parentFields": [
+            "practifi__Activity_Configuration__r"
+        ]
+    },
     "practifi__Process_Type__c": {
         "orderByField": "Name",
         "orderByDirection": "ASC",

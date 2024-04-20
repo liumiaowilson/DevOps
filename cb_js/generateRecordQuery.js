@@ -22,6 +22,12 @@ class Node {
         const fields = [ 'Fields(All)' ];
         const recordTreeDef = this.recordTreeMap[this.objectApiName];
         if(recordTreeDef) {
+            if(recordTreeDef.parentFields && recordTreeDef.parentFields.length) {
+                for(const parentField of recordTreeDef.parentFields) {
+                    fields.push('Fields(All) ' + parentField);
+                }
+            }
+
             const childRelationshipsDef = this.childRelationshipsMap[this.objectApiName];
 
             if(recordTreeDef.childRelationships && recordTreeDef.childRelationships.length) {

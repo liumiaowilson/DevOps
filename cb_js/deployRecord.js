@@ -14,17 +14,24 @@ function collectObjectApiNames(data, objectApiNames) {
     }
 }
 
-function collectRecordsToUpdate(data, objMap, recordsToUpdate) {
+function collectRecordsToUpdate(data, objMap, recordsToCreate, recordsToUpdate, recordsToDelete) {
     if(data && typeof data === 'object' && data.constructor === Object) {
         const objectApiName = data.attributes?.type;
         if(objectApiName) {
-            const fields = objMap[objectApiName];
+            const objInfo = objMap[objectApiName];
             const record = {};
             record.Id = data.Id;
 
             Object.keys(data).forEach(key => {
-                if(!fields.includes(key)) {
-                    return;
+                if(record.Id) {
+                    if(!objInfo.updateableFields.includes(key)) {
+                        return;
+                    }
+                }
+                else {
+                    if(!objInfo.createableFields.includes(key)) {
+                        return;
+                    }
                 }
 
                 let value = data[key];
@@ -38,15 +45,27 @@ function collectRecordsToUpdate(data, objMap, recordsToUpdate) {
                 record[key] = value;
             });
 
-            const records = recordsToUpdate[objectApiName] || [];
-            records.push(record);
-            recordsToUpdate[objectApiName] = records;
+            if(data.IsDeleted) {
+                const records = recordsToDelete[objectApiName] || [];
+                records.push(record);
+                recordsToDelete[objectApiName] = records;
+            }
+            else if(data.Id) {
+                const records = recordsToUpdate[objectApiName] || [];
+                records.push(record);
+                recordsToUpdate[objectApiName] = records;
+            }
+            else {
+                const records = recordsToCreate[objectApiName] || [];
+                records.push(record);
+                recordsToCreate[objectApiName] = records;
+            }
         }
 
-        Object.values(data).forEach(value => collectRecordsToUpdate(value, objMap, recordsToUpdate));
+        Object.values(data).forEach(value => collectRecordsToUpdate(value, objMap, recordsToCreate, recordsToUpdate, recordsToDelete));
     }
     else if(Array.isArray(data)) {
-        data.forEach(item => collectRecordsToUpdate(item, objMap, recordsToUpdate));
+        data.forEach(item => collectRecordsToUpdate(item, objMap, recordsToCreate, recordsToUpdate, recordsToDelete));
     }
     else {
         return;
@@ -70,27 +89,39 @@ function collectRecordsToUpdate(data, objMap, recordsToUpdate) {
 
         return Promise.all(objectApiNames.map(objectApiName => {
             return context.connection.describe(objectApiName).then(objDescribe => {
-                const fields = objDescribe.fields.filter(field => field.updateable).map(field => field.name);
+                const updateableFields = objDescribe.fields.filter(field => field.updateable).map(field => field.name);
+                const createableFields = objDescribe.fields.filter(field => field.createable).map(field => field.name);
 
                 return {
                     objectApiName,
-                    fields,
+                    updateableFields,
+                    createableFields,
                 };
             });
         })).then(dataList => {
             const objMap = dataList.reduce((res, cur) => {
                 return {
                     ...res,
-                    [cur.objectApiName]: cur.fields,
+                    [cur.objectApiName]: cur,
                 };
             }, {});
 
+            const recordsToCreate = {};
             const recordsToUpdate = {};
-            collectRecordsToUpdate(data, objMap, recordsToUpdate);
+            const recordsToDelete = {};
+            collectRecordsToUpdate(data, objMap, recordsToCreate, recordsToUpdate, recordsToDelete);
 
-            return Promise.all(Object.keys(recordsToUpdate).map(objectApiName => {
-                return context.connection.sobject(objectApiName).update(recordsToUpdate[objectApiName]);
-            })).then(() => {
+            return Promise.all([
+                Promise.all(Object.keys(recordsToCreate).map(objectApiName => {
+                    return context.connection.sobject(objectApiName).insert(recordsToCreate[objectApiName]);
+                })),
+                Promise.all(Object.keys(recordsToUpdate).map(objectApiName => {
+                    return context.connection.sobject(objectApiName).update(recordsToUpdate[objectApiName]);
+                })),
+                Promise.all(Object.keys(recordsToDelete).map(objectApiName => {
+                    return context.connection.sobject(objectApiName).delete(recordsToDelete[objectApiName]);
+                })),
+            ]).then(() => {
                 cmd.logSuccess('Records deployed successfully');
             });
         });

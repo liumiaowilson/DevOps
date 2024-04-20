@@ -1,0 +1,13 @@
+# {
+#   "name": "deployRecord",
+#   "description": "Deploy the record from the given record json",
+#   "usage": "dev deployRecord <path>"
+# }
+path=$1
+
+if [ -z $path ]; then
+    echo 'Path is required'
+    exit 0
+fi
+
+sf mypim run script -o $DefaultAlias -f ~/DevOps/cb_js/deployRecord.js $path

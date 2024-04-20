@@ -1,0 +1,6 @@
+# {
+#   "name": "parseSoql",
+#   "description": "Parse soql",
+#   "usage": "dev parseSoql <soql>"
+# }
+sf mypim run script -o $DefaultAlias -f ~/DevOps/cb_js/parseSoql.js "$@"

@@ -10,7 +10,7 @@ const getDescribe = (objectApiName, connection) => {
         return connection.describe(objectApiName).then(objDescribe => {
             globalDescribes[objectApiName] = objDescribe;
             return objDescribe;
-        });
+        }).catch(err => null);
     }
 };
 
@@ -36,7 +36,15 @@ class Node {
             const fieldsAllField = this.ast.fields.find(field => field.type === 'FieldFunctionExpression'
                 && field.functionName === 'FIELDS'
                 && field.parameters[0] === 'All'
+                && !field.alias
             )
+
+            const fieldsParentFields = this.ast.fields.filter(field => field.type === 'FieldFunctionExpression'
+                && field.functionName === 'FIELDS'
+                && field.parameters[0] === 'All'
+                && field.alias
+            );
+
             if(fieldsAllField) {
                 this.ast.fields = globalDescribes[this.ast.sObject].fields.map(field => {
                     return {
@@ -55,57 +63,76 @@ class Node {
                 });
             }
 
-            const subQueries = ast.fields.filter(field => field.type === 'FieldSubquery');
+            return Promise.all(fieldsParentFields.map(fieldsParentField => {
+                const parentField = fieldsParentField.alias;
+                const parentFieldName = parentField.endsWith('__r') ? parentField.substring(0, parentField.length - 1) + 'c' : parentField + 'Id';
+                const field = globalDescribes[this.ast.sObject].fields.find(field => field.name === parentFieldName);
+                return getDescribe(field.referenceTo[0], this.connection).then(objDescribe => {
+                    if(!objDescribe) return;
 
-            const childRelationshipMap = {};
-            for(const childRelationship of objDescribe.childRelationships) {
-                if(!childRelationship.relationshipName) continue;
+                    objDescribe.fields.forEach(field => {
+                        this.ast.fields.push({
+                            "type": "FieldRelationship",
+                            "field": field.name,
+                            "relationships": [
+                                parentField,
+                            ],
+                        });
+                    });
+                });
+            })).then(dataList => {
+                const subQueries = ast.fields.filter(field => field.type === 'FieldSubquery');
 
-                childRelationshipMap[childRelationship.relationshipName] = childRelationship;
-            }
+                const childRelationshipMap = {};
+                for(const childRelationship of objDescribe.childRelationships) {
+                    if(!childRelationship.relationshipName) continue;
 
-            const query = this.soqlParser.composeQuery(this.ast);
-            return this.connection.query(query).then(data => {
-                this.data = data;
+                    childRelationshipMap[childRelationship.relationshipName] = childRelationship;
+                }
 
-                if(!this.data.records.length) return;
+                const query = this.soqlParser.composeQuery(this.ast);
+                return this.connection.query(query).then(data => {
+                    this.data = data;
 
-                return Promise.all(subQueries.map(subQuery => {
-                    const subAst = clone(subQuery.subquery);
-                    const relationshipName = subAst.relationshipName;
-                    delete subAst.relationshipName;
-                    const childRelationship = childRelationshipMap[relationshipName];
-                    if(!childRelationship) {
-                        throw new Error('Invalid child relationship name: ' + relationshipName + ' for ' + objectApiName);
-                    }
+                    if(!this.data.records.length) return;
 
-                    const parentFieldName = childRelationship.field;
-                    subAst.sObject = childRelationship.childSObject;
+                    return Promise.all(subQueries.map(subQuery => {
+                        const subAst = clone(subQuery.subquery);
+                        const relationshipName = subAst.relationshipName;
+                        delete subAst.relationshipName;
+                        const childRelationship = childRelationshipMap[relationshipName];
+                        if(!childRelationship) {
+                            throw new Error('Invalid child relationship name: ' + relationshipName + ' for ' + objectApiName);
+                        }
 
-                    const idClause = {
-                        field: parentFieldName,
-                        operator: "IN",
-                        literalType: "STRING",
-                        value: this.data.records.map(record => "'" + record.Id + "'"),
-                    };
+                        const parentFieldName = childRelationship.field;
+                        subAst.sObject = childRelationship.childSObject;
 
-                    if(!subAst.where) {
-                        subAst.where = {
-                            left: idClause,
+                        const idClause = {
+                            field: parentFieldName,
+                            operator: "IN",
+                            literalType: "STRING",
+                            value: this.data.records.map(record => "'" + record.Id + "'"),
                         };
-                    }
-                    else {
-                        subAst.where = {
-                            left: idClause,
-                            operator: 'AND',
-                            right: subAst.where,
-                        };
-                    }
 
-                    const child = new Node(this.connection, this.soqlParser, this.cmd);
-                    this.children[relationshipName] = child;
-                    return child.init(subAst, parentFieldName);
-                }));
+                        if(!subAst.where) {
+                            subAst.where = {
+                                left: idClause,
+                            };
+                        }
+                        else {
+                            subAst.where = {
+                                left: idClause,
+                                operator: 'AND',
+                                right: subAst.where,
+                            };
+                        }
+
+                        const child = new Node(this.connection, this.soqlParser, this.cmd);
+                        this.children[relationshipName] = child;
+                        return child.init(subAst, parentFieldName);
+                    }));
+                });
             });
         });
     }

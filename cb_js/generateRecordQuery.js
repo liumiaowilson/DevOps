@@ -94,7 +94,7 @@ class Node {
                 return {
                     [key]: childRelationships,
                 };
-            });
+            }).catch(err => ({}));
         })).then(childRelationshipsList => {
             const childRelationshipsMap = childRelationshipsList.reduce((res, cur) => {
                 return {

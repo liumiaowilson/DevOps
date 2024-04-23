@@ -1,0 +1,15 @@
+# {
+#   "name": "retrieveDataRaptor",
+#   "description": "Retrieve data raptor with given name",
+#   "usage": "dev retrieveDataRaptor <name>"
+# }
+name=$1
+
+if [ -z $name ]; then
+    echo 'Name is required'
+    exit 0
+fi
+
+sf mypim run script -o $DefaultAlias -f ~/DevOps/cb_js/generateDataRaptorQuery.js $name > ~/tmp.soql
+sf mypim run script -o $DefaultAlias -f ~/DevOps/cb_js/deepQuery.js ~/tmp.soql > ~/result.json
+sf mypim run script -o $DefaultAlias -f ~/DevOps/cb_js/normalizeRecord.js ~/result.json

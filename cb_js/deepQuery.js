@@ -168,18 +168,29 @@ class Node {
     }
 
     context.ux.action.start('Querying');
-    return context.fs.readFile(path, 'utf8').then(query => {
+    return context.fs.readFile(path, 'utf8').then(lines => {
         return context.require('soql-parser-js').then(({ default: soqlParser }) => {
-            const ast = soqlParser.parseQuery(query);
-            const root = new Node(context.connection, soqlParser, cmd);
-            return getDescribe(ast.sObject, context.connection).then(() => {
-                return root.init(ast, null).then(() => {
-                    root.reconcile();
+            return Promise.all(lines.split('\n').filter(Boolean).map(query => {
+                const ast = soqlParser.parseQuery(query);
+                const root = new Node(context.connection, soqlParser, cmd);
+                return getDescribe(ast.sObject, context.connection).then(() => {
+                    return root.init(ast, null).then(() => {
+                        root.reconcile();
 
-                    cmd.log(JSON.stringify(root.data, (key, value) => value !== null ? value : undefined, 4));
-
-                    return root.data;
+                        return root.data;
+                    });
                 });
+            })).then(dataList => {
+                const records = dataList.flatMap(data => data.records);
+                const result = {
+                    totalSize: records.length,
+                    done: true,
+                    records,
+                };
+
+                cmd.log(JSON.stringify(result, (key, value) => value !== null ? value : undefined, 4));
+
+                return result;
             });
         });
     }).finally(() => context.ux.action.stop());

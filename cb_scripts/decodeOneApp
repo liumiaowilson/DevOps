@@ -1,0 +1,13 @@
+# {
+#   "name": "decodeOneApp",
+#   "description": "Decode one app # url",
+#   "usage": "dev decodeOneApp <url>"
+# }
+url=$1
+
+if [ -z $url ]; then
+    echo 'One App # Url is required'
+    exit 0
+fi
+
+sf mypim run script -o $DefaultAlias -f ~/DevOps/cb_js/decodeOneApp.js "$url"

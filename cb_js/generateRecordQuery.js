@@ -1,3 +1,40 @@
+function findRealKey(prefixMap, key) {
+    if(!key.startsWith('<ns>__')) {
+        return key;
+    }
+
+    const name = key.substring(6);
+    const objectApiName = Object.values(prefixMap).find(val => val.endsWith('__' + name));
+    return objectApiName;
+}
+
+function getRecordDef(recordTreeMap, objectApiName) {
+    if(recordTreeMap[objectApiName]) {
+        return recordTreeMap[objectApiName];
+    }
+    else {
+        const items = objectApiName.split('__');
+        if(items.length < 3) {
+            return;
+        }
+
+        const ns = items[0];
+        const name = items[1] + '__' + items[2];
+        const newObjectApiName = '<ns>__' + name;
+        if(!recordTreeMap[newObjectApiName]) {
+            return;
+        }
+
+        const def = recordTreeMap[newObjectApiName];
+        return hydrateWithNamespace(def, ns);
+    }
+}
+
+function hydrateWithNamespace(data, ns) {
+    const str = JSON.stringify(data);
+    return JSON.parse(str.replace(/<ns>/g, ns));
+}
+
 class Node {
     constructor(
         objectApiName,
@@ -6,7 +43,8 @@ class Node {
         filter,
         childRelationshipsMap,
         recordTreeMap,
-        cmd
+        cmd,
+        depth = 0
     ) {
         this.objectApiName = objectApiName;
         this.parentRelationshipName = parentRelationshipName;
@@ -15,12 +53,13 @@ class Node {
         this.childRelationshipsMap = childRelationshipsMap;
         this.recordTreeMap = recordTreeMap;
         this.cmd = cmd;
+        this.depth = depth;
     }
 
     build() {
         const parentName = this.isRoot ? this.objectApiName : this.parentRelationshipName;
         const fields = [ 'Fields(All)' ];
-        const recordTreeDef = this.recordTreeMap[this.objectApiName];
+        const recordTreeDef = getRecordDef(this.recordTreeMap, this.objectApiName);
         if(recordTreeDef) {
             if(recordTreeDef.parentFields && recordTreeDef.parentFields.length) {
                 for(const parentField of recordTreeDef.parentFields) {
@@ -45,8 +84,13 @@ class Node {
                         null,
                         this.childRelationshipsMap,
                         this.recordTreeMap,
-                        this.cmd
+                        this.cmd,
+                        childRelationshipName === this.parentRelationshipName ? this.depth + 1 : 0
                     );
+
+                    if(childNode.depth > 3) {
+                        continue;
+                    }
 
                     fields.push('(' + childNode.build() + ')');
                 }
@@ -81,8 +125,10 @@ class Node {
         context.fs.readFile(homeDir + '/keyPrefix.json', 'utf8'),
         context.fs.readFile(homeDir + '/DevOps/json/recordTree.json', 'utf8'),
     ]).then(([ keyPrefixJSON, recordTreeJSON ]) => {
+        const prefixMap = JSON.parse(keyPrefixJSON);
         const recordTreeMap = JSON.parse(recordTreeJSON);
         return Promise.all(Object.keys(recordTreeMap).map(key => {
+            key = findRealKey(prefixMap, key);
             return context.connection.describe(key).then(objDescribe => {
                 const childRelationships = {};
                 for(const childRelationship of objDescribe.childRelationships) {
@@ -102,8 +148,6 @@ class Node {
                     ...cur,
                 };
             }, {});
-
-            const prefixMap = JSON.parse(keyPrefixJSON);
 
             const objectApiName = prefixMap[recordId.substring(0, 3)];
 

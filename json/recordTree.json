@@ -1,4 +1,18 @@
 {
+    "<ns>__OmniScript__c": {
+        "orderByField": "Name",
+        "orderByDirection": "ASC",
+        "childRelationships": [
+            "<ns>__Elements__r"
+        ]
+    },
+    "<ns>__Element__c": {
+        "orderByField": "<ns>__Order__c",
+        "orderByDirection": "ASC",
+        "childRelationships": [
+            "<ns>__Elements__r"
+        ]
+    },
     "Task": {
         "orderByField": "Subject",
         "orderByDirection": "ASC",

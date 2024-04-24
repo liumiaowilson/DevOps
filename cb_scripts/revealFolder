@@ -1,8 +1,11 @@
 # {
 #   "name": "revealFolder",
-#   "description": "Open all the files in the folder in VSCode editor",
+#   "description": "Open the first 20 files in the folder in VSCode editor",
 #   "usage": "dev revealFolder <path>"
 # }
 path=$1
 
-code-server -r $path/*
+for file in $(ls $path | head -n 20)
+do
+    code-server -r $path/$file
+done

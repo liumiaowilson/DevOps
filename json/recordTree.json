@@ -1,4 +1,18 @@
 {
+    "OmniProcess": {
+        "orderByField": "Name",
+        "orderByDirection": "ASC",
+        "childRelationships": [
+            "OmniProcessElements"
+        ]
+    },
+    "OmniProcessElement": {
+        "orderByField": "SequenceNumber",
+        "orderByDirection": "ASC",
+        "childRelationships": [
+            "ChildElements"
+        ]
+    },
     "<ns>__OmniScript__c": {
         "orderByField": "Name",
         "orderByDirection": "ASC",

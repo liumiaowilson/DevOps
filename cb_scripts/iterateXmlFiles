@@ -1,0 +1,16 @@
+# {
+#   "name": "iterateXmlFiles",
+#   "description": "Iterate xml files in the given root directory with a callback function in the script file",
+#   "usage": "dev iterateXmlFiles <root> <callback_script_file>"
+# }
+if [ -z $1 ]; then
+    echo 'Root is required'
+    exit 0
+fi
+
+if [ -z $2 ]; then
+    echo 'Callback script path is required'
+    exit 0
+fi
+
+sf mypim run script -o $DefaultAlias -f ~/DevOps/cb_js/iterateXmlFiles.js $1 $2

@@ -1,0 +1,23 @@
+# {
+#   "name": "convertFlexCardLwc",
+#   "description": "Convert omnistudio flexcard to simulated flexcard lwc",
+#   "usage": "dev convertFlexCardLwc <zipFile>"
+# }
+zipFile=$1
+
+if [ -z $zipFile ]; then
+    echo 'Zip File is required'
+    exit 0
+fi
+
+name="$(basename $zipFile .zip)"
+
+rm -rf ~/flexcard_build
+mkdir ~/flexcard_build
+cp $zipFile ~/flexcard_build/$name.zip
+cd ~/flexcard_build
+unzip $name.zip
+cd $name
+cp ~/mypim/build/package.xml .
+sf mypim run script -o $DefaultAlias -f ~/DevOps/cb_js/convertFlexCardLwc.js ~/flexcard_build/$name/lwc/$name/$name.js
+sfdx force:mdapi:deploy -d . -u $DefaultAlias -g -w 100

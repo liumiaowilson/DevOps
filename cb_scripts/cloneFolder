@@ -1,0 +1,19 @@
+# {
+#   "name": "cloneFolder",
+#   "description": "Clone a lwc/aura folder with some renaming",
+#   "usage": "dev cloneFolder <folderName> <newFolderName>"
+# }
+folderName=$1
+newFolderName=$2
+
+if [ -z $folderName ]; then
+    echo 'Folder Name is required'
+    exit 0
+fi
+
+if [ -z $newFolderName ]; then
+    echo 'New Folder Name is required'
+    exit 0
+fi
+
+sf mypim run script -o $DefaultAlias -f ~/DevOps/cb_js/cloneFolder.js $folderName $newFolderName

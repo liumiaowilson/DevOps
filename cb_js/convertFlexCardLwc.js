@@ -23,6 +23,7 @@
         context.fs.writeFile(jsMetaPath, meta),
         context.fs.readFile(jsHtmlPath, 'utf8').then(html => {
             html = html.replace(/omnistudio-/g, 'c-v-');
+            html = html.replace(/c-cf-/g, 'c-');
             return context.fs.writeFile(jsHtmlPath, html);
         }),
         context.fs.readFile(jsPath, 'utf8').then(js => {

@@ -1,0 +1,26 @@
+# {
+#   "name": "convertOmniscriptLwc",
+#   "description": "Convert omnistudio omniscript to simulated omniscript lwc",
+#   "usage": "dev convertOmniscriptLwc <zipFile>"
+# }
+zipFile=$1
+
+if [ -z $zipFile ]; then
+    echo 'Zip File is required'
+    exit 0
+fi
+
+name="$(basename $zipFile .zip)"
+
+rm -rf ~/omniscript_build
+mkdir ~/omniscript_build
+cp $zipFile ~/omniscript_build/$name.zip
+cd ~/omniscript_build
+mkdir $name
+mv $name.zip $name
+cd $name
+unzip $name.zip
+mv $name.zip ..
+cp ~/mypim/build/package.xml .
+sf mypim run script -o $DefaultAlias -f ~/DevOps/cb_js/convertOmniscriptLwc.js ~/omniscript_build/$name/lwc/$name/$name.js
+sfdx force:mdapi:deploy -d . -u $DefaultAlias -g -w 100

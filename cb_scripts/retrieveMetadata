@@ -1,0 +1,11 @@
+# {
+#   "name": "retrieveMetadata",
+#   "description": "Retrieve all metadata with given type",
+#   "usage": "dev retrieveMetadata <type>"
+# }
+if [ -z $1 ]; then
+    echo 'Metadata pattern is required'
+    exit 0
+fi
+
+sfdx force:source:retrieve -u $DefaultAlias -m "$1"

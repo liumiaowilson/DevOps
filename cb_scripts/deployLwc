@@ -1,0 +1,19 @@
+# {
+#   "name": "deployLwc",
+#   "description": "Deploy the lwc in the given path using mdapi",
+#   "usage": "dev deployLwc <path>"
+# }
+path=$1
+
+if [ -z $path ]; then
+    echo 'Path is required'
+    exit 0
+fi
+
+rm -rf ~/lwc_deploy
+mkdir ~/lwc_deploy
+cp ~/mypim/build/package.xml ~/lwc_deploy/
+mkdir -p ~/lwc_deploy/lwc
+cp -r $path ~/lwc_deploy/lwc/
+
+sfdx force:mdapi:deploy -d ~/lwc_deploy -u $DefaultAlias -g -w 100

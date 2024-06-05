@@ -1,0 +1,20 @@
+# {
+#   "name": "deployApex",
+#   "description": "Deploy the apex in the given path using mdapi",
+#   "usage": "dev deployApex <path>"
+# }
+path=$1
+
+if [ -z $path ]; then
+    echo 'Path is required'
+    exit 0
+fi
+
+rm -rf ~/apex_deploy
+mkdir ~/apex_deploy
+cp ~/mypim/build/package.xml ~/apex_deploy/
+mkdir -p ~/apex_deploy/classes
+cp $path ~/apex_deploy/classes/
+cp "$path"-meta.xml ~/apex_deploy/classes/
+
+sfdx force:mdapi:deploy -d ~/apex_deploy -u $DefaultAlias -g -w 100

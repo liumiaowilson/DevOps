@@ -1,0 +1,19 @@
+# {
+#   "name": "deployAura",
+#   "description": "Deploy the aura component in the given path using mdapi",
+#   "usage": "dev deployAura <path>"
+# }
+path=$1
+
+if [ -z $path ]; then
+    echo 'Path is required'
+    exit 0
+fi
+
+rm -rf ~/aura_deploy
+mkdir ~/aura_deploy
+cp ~/mypim/build/package.xml ~/aura_deploy/
+mkdir -p ~/aura_deploy/aura
+cp -r $path ~/aura_deploy/aura/
+
+sfdx force:mdapi:deploy -d ~/aura_deploy -u $DefaultAlias -g -w 100

@@ -1,0 +1,19 @@
+# {
+#   "name": "cloneFile",
+#   "description": "Clone a metadata file with some renaming",
+#   "usage": "dev cloneFile <fileName> <newFileName>"
+# }
+fileName=$1
+newFileName=$2
+
+if [ -z $fileName ]; then
+    echo 'File Name is required'
+    exit 0
+fi
+
+if [ -z $newFileName ]; then
+    echo 'New File Name is required'
+    exit 0
+fi
+
+sf mypim run script -o $DefaultAlias -f ~/DevOps/cb_js/cloneFile.js $fileName $newFileName

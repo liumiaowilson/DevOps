@@ -1,0 +1,20 @@
+# {
+#   "name": "deployStaticResource",
+#   "description": "Deploy the static resource in the given path using mdapi",
+#   "usage": "dev deployStaticResource <path>"
+# }
+path=$1
+
+if [ -z $path ]; then
+    echo 'Path is required'
+    exit 0
+fi
+
+rm -rf ~/staticresource_deploy
+mkdir ~/staticresource_deploy
+cp ~/mypim/build/package.xml ~/staticresource_deploy/
+mkdir -p ~/staticresource_deploy/staticresources
+cp $path ~/staticresource_deploy/staticresources/
+cp "$path"-meta.xml ~/staticresource_deploy/staticresources/
+
+sfdx force:mdapi:deploy -d ~/staticresource_deploy -u $DefaultAlias -g -w 100

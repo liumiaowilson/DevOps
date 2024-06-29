@@ -1,0 +1,19 @@
+# {
+#   "name": "applyConfigurationEditorNamespace",
+#   "description": "Apply the namespace to 'c' of the flow action configuration editors",
+#   "usage": "dev applyConfigurationEditorNamespace <folderName> <namespace>"
+# }
+folderName=$1
+namespace=$2
+
+if [ -z $folderName ]; then
+    echo 'Folder Name is required'
+    exit 0
+fi
+
+if [ -z $namespace ]; then
+    echo 'Namespace is required'
+    exit 0
+fi
+
+sf mypim run script -o $DefaultAlias -f ~/DevOps/cb_js/applyConfigurationEditorNamespace.js $folderName $namespace

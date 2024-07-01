@@ -1,0 +1,19 @@
+# {
+#   "name": "deployExPropTypeBundle",
+#   "description": "Deploy the experience property type bundle in the given path using mdapi",
+#   "usage": "dev deployExPropTypeBundle <path>"
+# }
+path=$1
+
+if [ -z $path ]; then
+    echo 'Path is required'
+    exit 0
+fi
+
+rm -rf ~/exPropTypeBundle_deploy
+mkdir ~/exPropTypeBundle_deploy
+cp ~/DevOps/config/exPropTypeBundle.xml ~/exPropTypeBundle_deploy/package.xml
+mkdir -p ~/exPropTypeBundle_deploy/experiencePropertyTypeBundles
+cp -r $path ~/exPropTypeBundle_deploy/experiencePropertyTypeBundles/
+
+sfdx force:mdapi:deploy -d ~/exPropTypeBundle_deploy -u $DefaultAlias -g -w 100

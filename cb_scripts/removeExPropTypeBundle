@@ -1,0 +1,18 @@
+# {
+#   "name": "removeExPropTypeBundle",
+#   "description": "Remove the experience property type bundle in the given path using mdapi",
+#   "usage": "dev removeExPropTypeBundle <path>"
+# }
+path=$1
+
+if [ -z $path ]; then
+    echo 'Path is required'
+    exit 0
+fi
+
+rm -rf ~/exPropTypeBundle_deploy
+mkdir ~/exPropTypeBundle_deploy
+cp ~/DevOps/config/exPropTypeBundle.xml ~/exPropTypeBundle_deploy/package.xml
+sf mypim run script -o $DefaultAlias -f ~/DevOps/cb_js/mergeText.js ~/DevOps/config/destructiveExPropTypeBundle.xml ~/exPropTypeBundle_deploy/destructiveChanges.xml "name="$(basename $path)
+
+sfdx force:mdapi:deploy -d ~/exPropTypeBundle_deploy -u $DefaultAlias -g -w 100

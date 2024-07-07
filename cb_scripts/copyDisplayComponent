@@ -1,0 +1,8 @@
+# {
+#   "name": "displayComponent",
+#   "description": "Copy the javascript code to run in the devTool console to display the component name and params",
+#   "usage": "dev displayComponent"
+# }
+cat ~/DevOps/js/displayComponent.js > ~/clipboard
+echo '{"command": "multiclip.fileToClipboard"}' | websocat ws://localhost:$REMOTE_CONTROL_PORT
+echo 'Please open devTools, select a web component element in the Elements panel and run the copied script.'

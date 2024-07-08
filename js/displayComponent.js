@@ -48,5 +48,5 @@ catch(e) {
 console.clear();
 const style = 'background-color: darkblue; color: white; font-style: italic; border: 2px solid white; border-radius: 4px; font-size: 1.5em;'
 console.log('%c ' + tagName, style);
-console.log('Component Name: ', tagName);
+console.log('Component Name: ', descriptor.substring('markup://'.length));
 console.log('Component Params: %O', params);

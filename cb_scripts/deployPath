@@ -8,4 +8,4 @@ if [ -z $1 ]; then
     exit 0
 fi
 
-sfdx force:source:deploy -p "$1"
+sf project deploy start -o $DefaultAlias --ignore-conflicts -d "$1"

@@ -9,4 +9,5 @@ if [ -z $1 ]; then
 fi
 
 paths=`sf mypim run script -o $DefaultAlias -f ~/DevOps/cb_js/concatLinesFromFile.js $1`
-sfdx force:source:deploy -p "$paths"
+cmd=`sf mypim run script -o $DefaultAlias -f ~/DevOps/cb_js/buildProjectDeployCmd.js $paths`
+eval $cmd

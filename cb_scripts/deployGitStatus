@@ -5,5 +5,6 @@
 # }
 git status -s > ~/tmp.txt
 paths=`sf mypim run script -o $DefaultAlias -f ~/DevOps/cb_js/concatGitStatusLines.js ~/tmp.txt`
-sfdx force:source:deploy -p "$paths"
+cmd=`sf mypim run script -o $DefaultAlias -f ~/DevOps/cb_js/buildProjectDeployCmd.js $paths`
+eval $cmd
 rm ~/tmp.txt

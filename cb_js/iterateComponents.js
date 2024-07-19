@@ -4,22 +4,22 @@
 })
 */
 
-const iterate = (json, fn, context) => {
+const iterate = (json, fn, context, cmd, cmpName) => {
     if(json == null) return;
     if(typeof json === 'object' && json.constructor === Object) {
-        const newJson = fn(json, context);
+        const newJson = fn(json, context, cmd, cmpName);
         if(!newJson) {
             throw new Error('Invalid return for callback fn');
         }
 
         Object.keys(newJson).forEach(key => {
-            newJson[key] = iterate(newJson[key], fn, context);
+            newJson[key] = iterate(newJson[key], fn, context, cmd, cmpName);
         });
 
         return newJson;
     }
     else if(Array.isArray(json)) {
-        return json.map(item => iterate(item, fn, context));
+        return json.map(item => iterate(item, fn, context, cmd, cmpName));
     }
     else {
         return json;
@@ -65,7 +65,7 @@ const iterate = (json, fn, context) => {
                 return Promise.all(data.map(item => {
                     return context.fs.readFile(item.folder + '/' + item.cmpFileName, 'utf8').then(cmpJSON => {
                         const cmp = JSON.parse(cmpJSON);
-                        const newCmp = iterate(cmp, callbackFn, context);
+                        const newCmp = iterate(cmp, callbackFn, context, cmd, item.cmpFileName);
                         if(!newCmp) {
                             cmd.log('Invalid newCmp for ' + item.cmpFileName);
                         }

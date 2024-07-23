@@ -168,5 +168,14 @@
     "practifi__Preset_Checklist_Item__c": {
         "orderByField": "practifi__Order__c",
         "orderByDirection": "ASC"
+    },
+    "cloupra__Content_Block__c": {
+        "orderByField": "Name",
+        "orderByDirection": "ASC",
+        "parentFields": [
+            "cloupra__Content_Item__r",
+            "Content_Item_Prescript__r",
+            "Content_Item_Postscript__r"
+        ]
     }
 }

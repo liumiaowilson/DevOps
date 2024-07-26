@@ -10,4 +10,4 @@ else
     shift
 fi
 
-sfdx force:mdapi:deploy -d $dir -u $DefaultAlias -g -w 100 $@
+sf deploy project start -o $DefaultAlias --manifest $dir/package.xml -w 100

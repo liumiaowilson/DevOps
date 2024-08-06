@@ -5,5 +5,9 @@
 # }
 alias=$DefaultAlias
 
+if [ -n $1 ]; then
+    alias=$1
+fi
+
 url=`sf org open -o $alias --json | jq -r .result.url`
 python -m webbrowser $url

@@ -3,10 +3,10 @@
 #   "description": "Open the default org in the browser",
 #   "usage": "dev open"
 # }
-alias=$DefaultAlias
+alias=$1
 
-if [ -n $1 ]; then
-    alias=$1
+if [ -z $alias ]; then
+    alias=$DefaultAlias
 fi
 
 url=`sf org open -o $alias --json | jq -r .result.url`

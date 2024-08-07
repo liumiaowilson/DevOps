@@ -17,4 +17,5 @@ cp ~/mypim/build/sfdx-project.json ~/lwc_deploy/
 mkdir -p ~/lwc_deploy/lwc
 cp -r $path ~/lwc_deploy/lwc/
 
+cd ~/lwc_deploy
 sf deploy project start -o $DefaultAlias --manifest ~/lwc_deploy/package.xml -w 100

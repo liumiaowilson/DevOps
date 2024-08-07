@@ -13,7 +13,8 @@ fi
 rm -rf ~/lwc_deploy
 mkdir ~/lwc_deploy
 cp ~/mypim/build/package.xml ~/lwc_deploy/
+cp ~/mypim/build/sfdx-project.json ~/lwc_deploy/
 mkdir -p ~/lwc_deploy/lwc
 cp -r $path ~/lwc_deploy/lwc/
 
-sfdx force:mdapi:deploy -d ~/lwc_deploy -u $DefaultAlias -g -w 100
+sf deploy project start -o $DefaultAlias --manifest ~/lwc_deploy/package.xml -w 100

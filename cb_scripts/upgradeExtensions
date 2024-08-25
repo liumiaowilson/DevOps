@@ -1,0 +1,6 @@
+# {
+#   "name": "upgradeExtensions",
+#   "description": "Upgrade extensions when vscode is upgraded",
+#   "usage": "dev upgradeExtensions"
+# }
+sf mypim run script -o $DefaultAlias -f ~/DevOps/cb_js/upgrade_extensions.js

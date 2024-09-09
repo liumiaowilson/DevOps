@@ -12,14 +12,17 @@
     }
 
     context.ux.action.start('Cloning folder');
-    return context.fs.mkdir(newFolderName).then(() => {
-        return context.fs.readdir(folderName).then(filenames => {
-            return Promise.all(filenames.map(filename => {
-                return context.fs.readFile(`${folderName}/${filename}`, 'utf8').then(content => {
-                    const newFilename = filename.startsWith(folderName) ? newFolderName + filename.substring(folderName.length) : filename;
-                    return context.fs.writeFile(`${newFolderName}/${newFilename}`, content);
-                });
-            }));
+    return context.require('path').then(({ default: path }) => {
+        return context.fs.mkdir(newFolderName).then(() => {
+            return context.fs.readdir(folderName).then(filenames => {
+                return Promise.all(filenames.map(filename => {
+                    return context.fs.readFile(`${folderName}/${filename}`, 'utf8').then(content => {
+                        const folderBaseName = path.basename(folderName);
+                        const newFilename = filename.startsWith(folderBaseName) ? newFolderName + filename.substring(folderBaseName.length) : filename;
+                        return context.fs.writeFile(`${newFolderName}/${newFilename}`, content);
+                    });
+                }));
+            });
         });
     }).finally(() => context.ux.action.stop());
 })

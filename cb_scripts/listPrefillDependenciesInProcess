@@ -1,0 +1,6 @@
+# {
+#   "name": "listPrefillDependenciesInProcess",
+#   "description": "List prefill dependencies between process tasks in a proess type",
+#   "usage": "dev listPrefillDependenciesInProcess <processRecordTreeFile>"
+# }
+sf mypim run script -o $DefaultAlias -f ~/DevOps/cb_js/listPrefillDependenciesInProcess.js $@

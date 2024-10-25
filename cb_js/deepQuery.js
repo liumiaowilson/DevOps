@@ -14,6 +14,20 @@ const getDescribe = (objectApiName, connection) => {
     }
 };
 
+const queryAll = async (connection, query, cmd) => {
+    const result = await connection.query(query);
+
+    while(!result.done) {
+        const more = await connection.queryMore(result.nextRecordsUrl);
+        result.records.push(...more.records);
+        result.totalSize += more.totalSize;
+        result.done = more.done;
+        result.nextRecordsUrl = more.nextRecordsUrl;
+    }
+
+    return result;
+};
+
 class Node {
     constructor(connection, soqlParser, cmd) {
         this.connection = connection;
@@ -91,7 +105,7 @@ class Node {
                 }
 
                 const query = this.soqlParser.composeQuery(this.ast);
-                return this.connection.query(query).then(data => {
+                return queryAll(this.connection, query, this.cmd).then(data => {
                     this.data = data;
 
                     if(!this.data.records.length) return;

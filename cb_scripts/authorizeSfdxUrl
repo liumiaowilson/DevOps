@@ -1,0 +1,21 @@
+# {
+#   "name": "authorizeSfdxUrl",
+#   "description": "Authorize a connection using sfdx url",
+#   "usage": "dev authorizeSfdxUrl <alias> <sfdx-url>"
+# }
+alias=$1
+sfdxUrl=$2
+
+if [ -z $alias ]; then
+    echo 'Alias is required'
+    exit 0
+fi
+
+if [ -z $sfdxUrl ]; then
+    echo 'Sfdx Url is required'
+    exit 0
+fi
+
+echo $sfdxUrl > ~/sfdxUrl.txt
+sf org login sfdx-url --sfdx-url-file ~/sfdxUrl.txt --alias $alias
+rm ~/sfdxUrl.txt

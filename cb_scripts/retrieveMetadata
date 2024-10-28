@@ -8,4 +8,4 @@ if [ -z $1 ]; then
     exit 0
 fi
 
-sfdx force:source:retrieve -u $DefaultAlias -m "$1"
+sf project retrieve start -o $DefaultAlias -m "$1" -c

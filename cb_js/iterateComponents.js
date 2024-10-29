@@ -26,6 +26,11 @@ const iterate = (json, fn, context, cmd, cmpName) => {
     }
 };
 
+const callbacks = {
+    onInit: null,
+    onComplete: null,
+};
+
 (function(cmd, context) {
     const path = context.argv[0];
     if(!path) {
@@ -65,7 +70,13 @@ const iterate = (json, fn, context, cmd, cmpName) => {
                 return Promise.all(data.map(item => {
                     return context.fs.readFile(item.folder + '/' + item.cmpFileName, 'utf8').then(cmpJSON => {
                         const cmp = JSON.parse(cmpJSON);
-                        const newCmp = iterate(cmp, callbackFn, context, cmd, item.cmpFileName);
+                        const newCmp = iterate(cmp, callbackFn, {
+                            ...context,
+                            registerCallbacks: cbs => {
+                                callbacks.onInit = cbs?.onInit;
+                                callbacks.onComplete = cbs?.onComplete;
+                            },
+                        }, cmd, item.cmpFileName);
                         if(!newCmp) {
                             cmd.log('Invalid newCmp for ' + item.cmpFileName);
                         }
@@ -80,5 +91,11 @@ const iterate = (json, fn, context, cmd, cmpName) => {
                 }));
             });
         });
-    }).finally(() => context.ux.action.stop());
+    }).finally(() => {
+        if(callbacks.onComplete) {
+            callbacks.onComplete(cmd, context);
+        }
+
+        context.ux.action.stop();
+    });
 })

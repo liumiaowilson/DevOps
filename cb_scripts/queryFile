@@ -23,6 +23,9 @@ sf mypim run script -o $DefaultAlias -f ~/DevOps/cb_js/evaluateQuery.js
 query=`cat ~/.selected_query`
 
 case "$query" in
+    FIND*)
+        sf data search -q "$query" -o $DefaultAlias
+        ;;
     ~*)
         query=`echo $query | cut -c2-`
         sf data query -q "$query" -o $DefaultAlias -t

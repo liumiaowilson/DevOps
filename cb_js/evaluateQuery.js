@@ -47,7 +47,7 @@ const evaluate = async (script, ctx) => {
         INPUT,
     } = ctx;
 
-    return Promise.resolve(eval(script)).then(printValue);
+    return Promise.resolve(eval(script));
 };
 
 const queryAll = async (connection, query, cmd) => {
@@ -93,7 +93,6 @@ const getValue = (record, field) => {
 (function(cmd, context) {
     const homeDir = context.env.getString('CODE_BUILDER_HOME');
 
-    context.ux.action.start('Evaluating query...');
     return context.fs.readFile(homeDir + '/.selected_query', 'utf8').then(content => {
         const lines = content.split('\n').map(line => line.trim()).filter(line => line && !line.startsWith('#'));
 
@@ -120,7 +119,7 @@ const getValue = (record, field) => {
                 INPUT,
             };
             
-            const p = /:\${([^}]+)}/g;
+            const p = /\${([^}]+?)}/g;
             let result = null;
             const scriptMap = {};
             while(result = p.exec(line)) {
@@ -133,7 +132,8 @@ const getValue = (record, field) => {
                     scriptMap[script] = result;
                 });
             })).then(() => {
-                line = line.replace(/:\${([^}]+)}/g, (match, script) => scriptMap[script]);
+                line = line.replace(/:\${([^}]+?)}/g, (match, script) => printValue(scriptMap[script]));
+                line = line.replace(/\${([^}]+?)}/g, (match, script) => scriptMap[script]);
                 return line;
             });
         };
@@ -161,7 +161,5 @@ const getValue = (record, field) => {
         };
 
         return queryLines(lines, 0);
-    }).finally(() => {
-        context.ux.action.stop();
     });
 })

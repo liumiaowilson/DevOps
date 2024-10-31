@@ -1,3 +1,18 @@
+const buildProxyData = records => {
+    const handler = {
+        get(target, prop, receiver) {
+            if(prop === 'records') {
+                return records;
+            }
+            else {
+                return records.map(record => getValue(record, prop));
+            }
+        },
+    };
+
+    return new Proxy({}, handler);
+};
+
 const printValue = value => {
     if(typeof value === 'string') {
         if(value.match(/^\d{4}-\d{2}-\d{2}$/)) {
@@ -35,18 +50,40 @@ const evaluate = async (script, ctx) => {
     return Promise.resolve(eval(script)).then(printValue);
 };
 
-const queryAll = async (connection, query) => {
-    const result = await connection.query(query);
-
-    while(!result.done) {
-        const more = await connection.queryMore(result.nextRecordsUrl);
-        result.records.push(...more.records);
-        result.totalSize += more.totalSize;
-        result.done = more.done;
-        result.nextRecordsUrl = more.nextRecordsUrl;
+const queryAll = async (connection, query, cmd) => {
+    if(query.startsWith('FIND')) {
+        const result = await connection.search(query);
+        return {
+            records: result.searchRecords,
+        };
     }
+    else if(query.startsWith('~')) {
+        query = query.substring(1);
+        const result = await connection.tooling.query(query);
 
-    return result;
+        while(!result.done) {
+            const more = await connection.tooling.queryMore(result.nextRecordsUrl);
+            result.records.push(...more.records);
+            result.totalSize += more.totalSize;
+            result.done = more.done;
+            result.nextRecordsUrl = more.nextRecordsUrl;
+        }
+
+        return result;
+    }
+    else {
+        const result = await connection.query(query);
+
+        while(!result.done) {
+            const more = await connection.queryMore(result.nextRecordsUrl);
+            result.records.push(...more.records);
+            result.totalSize += more.totalSize;
+            result.done = more.done;
+            result.nextRecordsUrl = more.nextRecordsUrl;
+        }
+
+        return result;
+    }
 };
 
 const getValue = (record, field) => {
@@ -56,6 +93,7 @@ const getValue = (record, field) => {
 (function(cmd, context) {
     const homeDir = context.env.getString('CODE_BUILDER_HOME');
 
+    context.ux.action.start('Evaluating query...');
     return context.fs.readFile(homeDir + '/.selected_query', 'utf8').then(content => {
         const lines = content.split('\n').map(line => line.trim()).filter(Boolean);
 
@@ -101,19 +139,8 @@ const getValue = (record, field) => {
         };
 
         const queryLine = async (line) => {
-            return queryAll(context.connection, line).then(data => {
-                const handler = {
-                    get(target, prop, receiver) {
-                        if(prop === 'records') {
-                            return data.records;
-                        }
-                        else {
-                            return data.records.map(record => getValue(record, prop));
-                        }
-                    },
-                };
-
-                return new Proxy({}, handler);
+            return queryAll(context.connection, line, cmd).then(data => {
+                return buildProxyData(data.records);
             });
         };
 
@@ -134,5 +161,7 @@ const getValue = (record, field) => {
         };
 
         return queryLines(lines, 0);
+    }).finally(() => {
+        context.ux.action.stop();
     });
 })

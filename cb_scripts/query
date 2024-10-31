@@ -5,5 +5,13 @@
 # }
 query="$@"
 
+if [ -z "$query" ];then
+    query=`cat ~/.last_query`
+fi
+
+if [ -z "$query" ];then
+    exit 0
+fi
+
 echo "$query" > ~/.last_query
 sf data query -q "$query" -o $DefaultAlias

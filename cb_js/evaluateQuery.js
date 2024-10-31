@@ -99,6 +99,7 @@ const getValue = (record, field) => {
 
         const datasets = [];
         const variables = {};
+        let lastLine = null;
 
         const evaluateLine = async (line) => {
             const username = context.connection.username;
@@ -132,24 +133,30 @@ const getValue = (record, field) => {
                 INPUT,
                 VAR,
             };
-            
-            const p = /\${([^}]+?)}/g;
-            let result = null;
-            const scriptMap = {};
-            while(result = p.exec(line)) {
-                const script = result[1];
-                scriptMap[script] = null;
-            }
 
-            return Promise.all(Object.keys(scriptMap).map(script => {
-                return evaluate(script, ctx).then(result => {
-                    scriptMap[script] = result;
+            if(line.startsWith(':')) {
+                const script = line.substring(1).trim();
+                return evaluate(script, ctx).then(() => null);
+            }
+            else {
+                const p = /\${([^}]+?)}/g;
+                let result = null;
+                const scriptMap = {};
+                while(result = p.exec(line)) {
+                    const script = result[1];
+                    scriptMap[script] = null;
+                }
+
+                return Promise.all(Object.keys(scriptMap).map(script => {
+                    return evaluate(script, ctx).then(result => {
+                        scriptMap[script] = result;
+                    });
+                })).then(() => {
+                    line = line.replace(/:\${([^}]+?)}/g, (match, script) => printValue(scriptMap[script]));
+                    line = line.replace(/\${([^}]+?)}/g, (match, script) => scriptMap[script]);
+                    return line;
                 });
-            })).then(() => {
-                line = line.replace(/:\${([^}]+?)}/g, (match, script) => printValue(scriptMap[script]));
-                line = line.replace(/\${([^}]+?)}/g, (match, script) => scriptMap[script]);
-                return line;
-            });
+            }
         };
 
         const queryLine = async (line) => {
@@ -161,15 +168,24 @@ const getValue = (record, field) => {
         const queryLines = (lines, idx) => {
             const line = lines.shift();
             return evaluateLine(line).then(line => {
-                if(lines.length) {
-                    return queryLine(line).then(result => {
-                        datasets[idx] = result;
+                if(line) {
+                    lastLine = line;
+                }
 
-                        return queryLines(lines, idx + 1);
-                    });
+                if(lines.length) {
+                    if(line) {
+                        return queryLine(line).then(result => {
+                            datasets[idx] = result;
+
+                            return queryLines(lines, idx + 1);
+                        });
+                    }
+                    else {
+                        return queryLines(lines, idx);
+                    }
                 }
                 else {
-                    return context.fs.writeFile(homeDir + '/.selected_query', line);
+                    return context.fs.writeFile(homeDir + '/.selected_query', lastLine);
                 }
             });
         };

@@ -11,5 +11,4 @@ if [ -z $name ]; then
 fi
 
 touch ~/.last_query
-touch ~/.saved_queries
 sf mypim run script -o $DefaultAlias -f ~/DevOps/cb_js/querySave.js $name

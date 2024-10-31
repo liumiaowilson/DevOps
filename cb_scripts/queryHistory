@@ -1,0 +1,6 @@
+# {
+#   "name": "queryHistory",
+#   "description": "Show query history",
+#   "usage": "dev queryHistory"
+# }
+vi ~/.query_history

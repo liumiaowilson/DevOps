@@ -5,4 +5,5 @@
 # }
 query="$@"
 
+echo "$query" >> ~/.query_history
 sf data query -q "$query" -o $DefaultAlias

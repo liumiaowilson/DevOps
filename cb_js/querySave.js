@@ -33,8 +33,5 @@
 
             return context.mypim.update('Item__c', record).then(result => result.id);
         }
-    }).then(recordId => {
-        const url = `${context.mypim.instanceUrl}/lightning/cmp/c__itemEditor?c__type=File&c__recordId=${recordId}`;
-        cmd.log(`Query saved. You can edit it [here](${url})`);
     }).finally(() => context.ux.action.stop());
 })

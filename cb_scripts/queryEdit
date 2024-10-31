@@ -1,0 +1,6 @@
+# {
+#   "name": "queryEdit",
+#   "description": "Edit saved queries",
+#   "usage": "dev queryEdit"
+# }
+sf mypim run script -o $DefaultAlias -f ~/DevOps/cb_js/queryEdit.js

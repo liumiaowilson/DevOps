@@ -95,7 +95,7 @@ const getValue = (record, field) => {
 
     context.ux.action.start('Evaluating query...');
     return context.fs.readFile(homeDir + '/.selected_query', 'utf8').then(content => {
-        const lines = content.split('\n').map(line => line.trim()).filter(Boolean);
+        const lines = content.split('\n').map(line => line.trim()).filter(line => line && !line.startsWith('#'));
 
         const datasets = [];
 

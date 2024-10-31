@@ -45,6 +45,7 @@ const evaluate = async (script, ctx) => {
         FIRST,
         LAST,
         INPUT,
+        VAR,
     } = ctx;
 
     return Promise.resolve(eval(script));
@@ -97,6 +98,7 @@ const getValue = (record, field) => {
         const lines = content.split('\n').map(line => line.trim()).filter(line => line && !line.startsWith('#'));
 
         const datasets = [];
+        const variables = {};
 
         const evaluateLine = async (line) => {
             const username = context.connection.username;
@@ -110,6 +112,17 @@ const getValue = (record, field) => {
                     message,
                 }).then(resp => resp.value);
             };
+            const VAR = async (name, value) => {
+                if(typeof value === 'undefined') {
+                    return variables[name];
+                }
+                else {
+                    return Promise.resolve(value).then(value => {
+                        variables[name] = value;
+                        return value;
+                    });
+                }
+            };
 
             const ctx = {
                 username,
@@ -117,6 +130,7 @@ const getValue = (record, field) => {
                 FIRST,
                 LAST,
                 INPUT,
+                VAR,
             };
             
             const p = /\${([^}]+?)}/g;

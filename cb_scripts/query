@@ -15,4 +15,9 @@ if [ -z "$query" ];then
 fi
 
 echo "$query" > ~/.last_query
+
+echo "$query" > ~/.selected_query
+sf mypim run script -o $DefaultAlias -f ~/DevOps/cb_js/evaluateQuery.js
+query=`cat ~/.selected_query`
+
 sf data query -q "$query" -o $DefaultAlias

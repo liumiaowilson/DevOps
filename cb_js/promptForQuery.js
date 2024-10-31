@@ -1,8 +1,9 @@
 (function(cmd, context) {
     const homeDir = context.env.getString('CODE_BUILDER_HOME');
 
-    return context.fs.readFile(homeDir + '/.saved_queries', 'utf8').then(content => {
-        const queries = JSON.parse(content || '{}');
+    return context.mypim.query(`SELECT Id, Answer__c FROM Item__c WHERE Type__c = 'File' AND Name = 'CodeBuilderQueries'`).then(data => {
+        const record = data.records[0];
+        const queries = JSON.parse(record?.Answer__c || '{}');
         return context.autocomplete({
             message: 'Which query to run?',
             source: input => {

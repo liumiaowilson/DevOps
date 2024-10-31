@@ -1,0 +1,20 @@
+# {
+#   "name": "queryFile",
+#   "description": "Run the query from the file",
+#   "usage": "dev queryFile <file>"
+# }
+file=$1
+
+if [ -z "$file" ];then
+    echo 'File is required'
+    exit 0
+fi
+
+query=`cat $file`
+
+if [ -z "$query" ];then
+    exit 0
+fi
+
+echo "$query" > ~/.last_query
+sf data query -q "$query" -o $DefaultAlias

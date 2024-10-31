@@ -6,7 +6,6 @@
 query="$@"
 
 if [ -z "$query" ];then
-    touch ~/.saved_queries
     sf mypim run script -o $DefaultAlias -f ~/DevOps/cb_js/promptForQuery.js
     query=`cat ~/.selected_query`
 fi

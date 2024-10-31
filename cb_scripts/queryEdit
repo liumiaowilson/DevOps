@@ -1,6 +1,16 @@
 # {
 #   "name": "queryEdit",
-#   "description": "Edit saved queries",
-#   "usage": "dev queryEdit"
+#   "description": "Load the query in the editor",
+#   "usage": "dev queryEdit <name>"
 # }
-sf mypim run script -o $DefaultAlias -f ~/DevOps/cb_js/queryEdit.js
+name=$1
+
+if [ -z $name ]; then
+    echo 'Name is required'
+    exit 0
+fi
+
+touch ~/.last_query
+sf mypim run script -o $DefaultAlias -f ~/DevOps/cb_js/queryEdit.js $name
+vi ~/.last_query
+sf mypim run script -o $DefaultAlias -f ~/DevOps/cb_js/querySave.js $name

@@ -1,10 +1,18 @@
 (function(cmd, context) {
-    return context.mypim.query(`SELECT Id FROM Item__c WHERE Type__c = 'File' AND Name = 'CodeBuilderQueries'`)
+    const name = context.argv[0];
+    if(!name) {
+        cmd.error('Name is required');
+        return;
+    }
+
+    const homeDir = context.env.getString('CODE_BUILDER_HOME');
+
+    return context.mypim.query(`SELECT Id, Answer__c FROM Item__c WHERE Type__c = 'File' AND Name = 'CodeBuilderQueries'`)
         .then(savedQueries => {
             const record = savedQueries.records[0];
             if(record) {
-                const url = `${context.mypim.instanceUrl}/lightning/cmp/c__itemEditor?c__type=File&c__recordId=${record.Id}`;
-                context.open(url);
+                const queries = JSON.parse(record.Answer__c || '{}');
+                return context.fs.writeFile(homeDir + '/.last_query', queries[name] || '');
             }
             else {
                 cmd.log('No saved queries found');

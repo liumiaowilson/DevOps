@@ -20,4 +20,12 @@ echo "$query" > ~/.selected_query
 sf mypim run script -o $DefaultAlias -f ~/DevOps/cb_js/evaluateQuery.js
 query=`cat ~/.selected_query`
 
-sf data query -q "$query" -o $DefaultAlias
+case "$query" in
+    ~*)
+        query=`echo $query | cut -c2-`
+        sf data query -q "$query" -o $DefaultAlias -t
+        ;;
+    *)
+        sf data query -q "$query" -o $DefaultAlias
+        ;;
+esac

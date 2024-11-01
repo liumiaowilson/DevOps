@@ -92,6 +92,7 @@ const getValue = (record, field) => {
 };
 
 (function(cmd, context) {
+    const isDebug = context.env.getBoolean('DEBUG');
     const homeDir = context.env.getString('CODE_BUILDER_HOME');
 
     return context.fs.readFile(homeDir + '/.selected_query', 'utf8').then(content => {
@@ -178,6 +179,10 @@ const getValue = (record, field) => {
                         else {
                             skipped = true;
                         }
+                    }
+
+                    if(isDebug) {
+                        cmd.log(line);
                     }
 
                     if(!skipped) {

@@ -47,6 +47,7 @@ const evaluate = async (script, ctx, cmd) => {
         INPUT,
         VAR,
         DEBUG,
+        CHOICE,
     } = ctx;
 
     return Promise.resolve(eval(script));
@@ -131,6 +132,26 @@ const getValue = (record, field) => {
                     cmd.log(message);
                 }
             };
+            const CHOICE = (message, choices = []) => {
+                return context.autocomplete({
+                    message,
+                    source: input => {
+                        return choices.map(c => {
+                            if(typeof c === 'string') {
+                                return {
+                                    value: c,
+                                };
+                            }
+                            else {
+                                return {
+                                    value: c.value,
+                                    description: c.description,
+                                };
+                            }
+                        }).filter(o => !input || o.value.toLowerCase().includes(input.toLowerCase()) || o.description.toLowerCase().includes(input.toLowerCase()));
+                    },
+                });
+            };
 
             const ctx = {
                 username,
@@ -140,6 +161,7 @@ const getValue = (record, field) => {
                 INPUT,
                 VAR,
                 DEBUG,
+                CHOICE,
             };
 
             if(line.startsWith(':')) {

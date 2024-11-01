@@ -10,6 +10,10 @@ const evaluate = async (script, ctx, cmd) => {
         CHOICE,
         PARENTS,
         CHILDREN,
+        AND,
+        OR,
+        XOR,
+        DIFF,
     } = ctx;
 
     return Promise.resolve(eval(script));
@@ -189,6 +193,51 @@ const getValue = (record, field) => {
 
                 return result;
             };
+            const AND = (proxyData1, proxyData2) => {
+                const records1 = proxyData1.records;
+                const records2 = proxyData2.records;
+                const recordsMap2 = records2.reduce((acc, record) => {
+                    acc[record.Id] = record;
+                    return acc;
+                }, {});
+
+                const records = records1.filter(record => recordsMap2[record.Id]);
+                return buildProxyData(records);
+            };
+            const OR = (proxyData1, proxyData2) => {
+                const records1 = proxyData1.records;
+                const records2 = proxyData2.records;
+                const recordsMap1 = records1.reduce((acc, record) => {
+                    acc[record.Id] = record;
+                    return acc;
+                }, {});
+                const records = records1.concat(records2.filter(record => !recordsMap1[record.Id]));
+                return buildProxyData(records);
+            };
+            const XOR = (proxyData1, proxyData2) => {
+                const records1 = proxyData1.records;
+                const records2 = proxyData2.records;
+                const recordsMap1 = records1.reduce((acc, record) => {
+                    acc[record.Id] = record;
+                    return acc;
+                }, {});
+                const recordsMap2 = records2.reduce((acc, record) => {
+                    acc[record.Id] = record;
+                    return acc;
+                }, {});
+                const records = records1.filter(record => !recordsMap2[record.Id]).concat(records2.filter(record => !recordsMap1[record.Id]));
+                return buildProxyData(records);
+            };
+            const DIFF = (proxyData1, proxyData2) => {
+                const records1 = proxyData1.records;
+                const records2 = proxyData2.records;
+                const recordsMap2 = records2.reduce((acc, record) => {
+                    acc[record.Id] = record;
+                    return acc;
+                }, {});
+                const records = records1.filter(record => !recordsMap2[record.Id]);
+                return buildProxyData(records);
+            };
 
             const ctx = {
                 username,
@@ -201,6 +250,10 @@ const getValue = (record, field) => {
                 CHOICE,
                 PARENTS,
                 CHILDREN,
+                AND,
+                OR,
+                XOR,
+                DIFF,
             };
 
             if(line.startsWith(':')) {

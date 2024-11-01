@@ -46,6 +46,7 @@ const evaluate = async (script, ctx, cmd) => {
         LAST,
         INPUT,
         VAR,
+        DEBUG,
     } = ctx;
 
     return Promise.resolve(eval(script));
@@ -125,6 +126,11 @@ const getValue = (record, field) => {
                     });
                 }
             };
+            const DEBUG = message => {
+                if(isDebug) {
+                    cmd.log(message);
+                }
+            };
 
             const ctx = {
                 username,
@@ -133,6 +139,7 @@ const getValue = (record, field) => {
                 LAST,
                 INPUT,
                 VAR,
+                DEBUG,
             };
 
             if(line.startsWith(':')) {

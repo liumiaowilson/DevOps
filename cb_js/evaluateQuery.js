@@ -38,7 +38,7 @@ const printValue = value => {
     }
 };
 
-const evaluate = async (script, ctx) => {
+const evaluate = async (script, ctx, cmd) => {
     const {
         username,
         q,
@@ -113,7 +113,7 @@ const getValue = (record, field) => {
                     message,
                 }).then(resp => resp.value);
             };
-            const VAR = async (name, value) => {
+            const VAR = (name, value) => {
                 if(typeof value === 'undefined') {
                     return variables[name];
                 }
@@ -136,7 +136,7 @@ const getValue = (record, field) => {
 
             if(line.startsWith(':')) {
                 const script = line.substring(1).trim();
-                return evaluate(script, ctx).then(() => null);
+                return evaluate(script, ctx, cmd).then(() => null);
             }
             else {
                 const p = /\${([^}]+?)}/g;
@@ -148,7 +148,7 @@ const getValue = (record, field) => {
                 }
 
                 return Promise.all(Object.keys(scriptMap).map(script => {
-                    return evaluate(script, ctx).then(result => {
+                    return evaluate(script, ctx, cmd).then(result => {
                         scriptMap[script] = result;
                     });
                 })).then(() => {
@@ -168,24 +168,42 @@ const getValue = (record, field) => {
         const queryLines = (lines, idx) => {
             const line = lines.shift();
             return evaluateLine(line).then(line => {
+                let skipped = false;
+
                 if(line) {
-                    lastLine = line;
+                    if(line.startsWith('?')) {
+                        if(line.startsWith('?true ')) {
+                            line = line.substring(6).trim();
+                        }
+                        else {
+                            skipped = true;
+                        }
+                    }
+
+                    if(!skipped) {
+                        lastLine = line;
+                    }
                 }
 
-                if(lines.length) {
-                    if(line) {
-                        return queryLine(line).then(result => {
-                            datasets[idx] = result;
+                if(!lines.length) {
+                    return context.fs.writeFile(homeDir + '/.selected_query', lastLine);
+                }
 
-                            return queryLines(lines, idx + 1);
-                        });
-                    }
-                    else {
-                        return queryLines(lines, idx);
-                    }
+                if(!line) {
+                    return queryLines(lines, idx);
+                }
+
+                if(!skipped) {
+                    return queryLine(line).then(result => {
+                        datasets[idx] = result;
+
+                        return queryLines(lines, idx + 1);
+                    });
                 }
                 else {
-                    return context.fs.writeFile(homeDir + '/.selected_query', lastLine);
+                    datasets[idx] = buildProxyData([]);
+
+                    return queryLines(lines, idx + 1);
                 }
             });
         };

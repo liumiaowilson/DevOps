@@ -1,3 +1,19 @@
+const evaluate = async (script, ctx, cmd) => {
+    const {
+        username,
+        q,
+        FIRST,
+        LAST,
+        INPUT,
+        VAR,
+        DEBUG,
+        CHOICE,
+        PARENTS,
+    } = ctx;
+
+    return Promise.resolve(eval(script));
+};
+
 const buildProxyData = records => {
     const handler = {
         get(target, prop, receiver) {
@@ -36,21 +52,6 @@ const printValue = value => {
     else {
         return String(value);
     }
-};
-
-const evaluate = async (script, ctx, cmd) => {
-    const {
-        username,
-        q,
-        FIRST,
-        LAST,
-        INPUT,
-        VAR,
-        DEBUG,
-        CHOICE,
-    } = ctx;
-
-    return Promise.resolve(eval(script));
 };
 
 const queryAll = async (connection, query, cmd) => {
@@ -152,6 +153,27 @@ const getValue = (record, field) => {
                     },
                 });
             };
+            const PARENTS = (proxyData, fieldName, value) => {
+                const result = [];
+                const records = proxyData.records;
+
+                const recordMap = records.reduce((acc, record) => {
+                    acc[record.Id] = record;
+                    return acc;
+                }, {});
+
+                let record = recordMap[value];
+                while(record) {
+                    const parentId = getValue(record, fieldName);
+                    if(parentId) {
+                        result.push(parentId);
+                    }
+
+                    record = recordMap[parentId];
+                }
+
+                return result;
+            };
 
             const ctx = {
                 username,
@@ -162,6 +184,7 @@ const getValue = (record, field) => {
                 VAR,
                 DEBUG,
                 CHOICE,
+                PARENTS,
             };
 
             if(line.startsWith(':')) {

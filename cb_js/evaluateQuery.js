@@ -9,6 +9,7 @@ const evaluate = async (script, ctx, cmd) => {
         DEBUG,
         CHOICE,
         PARENTS,
+        CHILDREN,
     } = ctx;
 
     return Promise.resolve(eval(script));
@@ -174,6 +175,20 @@ const getValue = (record, field) => {
 
                 return result;
             };
+            const CHILDREN = (proxyData, fieldName, value) => {
+                const result = [];
+                const records = proxyData.records;
+
+                const queue = [ value ];
+                while(queue.length) {
+                    const childId = queue.shift();
+                    const children = records.filter(record => getValue(record, fieldName) === childId).map(record => record.Id);
+                    result.push(...children);
+                    queue.push(...children);
+                }
+
+                return result;
+            };
 
             const ctx = {
                 username,
@@ -185,6 +200,7 @@ const getValue = (record, field) => {
                 DEBUG,
                 CHOICE,
                 PARENTS,
+                CHILDREN,
             };
 
             if(line.startsWith(':')) {

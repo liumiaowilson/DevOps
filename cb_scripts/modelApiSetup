@@ -1,0 +1,14 @@
+# {
+#   "name": "modelApiSetup",
+#   "description": "Set up connected app for model api playground",
+#   "usage": "dev modelApiSetup"
+# }
+rm -rf ~/modelApi
+cp -r ~/mypim/projects/modelApi ~/
+url=`sf mypim run script -o $DefaultAlias -f ~/DevOps/cb_js/modelApiSetup.js`
+cd ~/modelApi
+sf deploy project start -o $DefaultAlias --manifest ./package.xml -w 100
+echo "Click on this url to do some manul configurations on Model Api ECA"
+echo "$url"
+echo "Go to Settings -> OAuth Settings"
+echo "In Security, check Issue JSON Web Token (JWT)-based access tokens for named users"

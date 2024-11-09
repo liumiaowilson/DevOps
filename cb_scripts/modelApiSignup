@@ -4,3 +4,4 @@
 #   "usage": "dev modelApiSignup"
 # }
 python -m webbrowser https://trailhead.salesforce.com/content/learn/modules/llm-data-masking-in-the-einstein-trust-layer/configure-llm-data-masking-policies
+echo "Please authorize model api playground org after creation and then run dev modelApiSetup"

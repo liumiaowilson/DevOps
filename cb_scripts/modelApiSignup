@@ -1,0 +1,6 @@
+# {
+#   "name": "modelApiSignup",
+#   "description": "Sign up a model api playground",
+#   "usage": "dev modelApiSignup"
+# }
+python -m webbrowser https://trailhead.salesforce.com/content/learn/modules/llm-data-masking-in-the-einstein-trust-layer/configure-llm-data-masking-policies

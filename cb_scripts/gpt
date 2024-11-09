@@ -1,0 +1,13 @@
+# {
+#   "name": "gpt",
+#   "description": "Send question to gpt",
+#   "usage": "dev gpt <question>"
+# }
+query="$@"
+
+if [ -z "$query" ];then
+    echo "Query is required"
+    exit 0
+fi
+
+sf mypim run script -o $DefaultAlias -f ~/DevOps/cb_js/gpt.js "$query"

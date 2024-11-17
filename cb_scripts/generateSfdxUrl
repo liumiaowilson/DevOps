@@ -1,0 +1,6 @@
+# {
+#   "name": "generateSfdxUrl",
+#   "description": "Generate a sfdx url",
+#   "usage": "dev generateSfdxUrl"
+# }
+sf org display -u $DefaultAlias --verbose --json | jq -r '.result.sfdxAuthUrl'

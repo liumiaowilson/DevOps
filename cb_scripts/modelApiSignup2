@@ -7,4 +7,6 @@ python -m webbrowser https://trailhead.salesforce.com/content/learn/projects/qui
 echo "Please authorize model api playground org after creation"
 echo "In Setup, enable Salesforce Generative AI"
 echo "Go to Einstein Trust Layer and turn it off"
+echo "Go to Agents, enable it, assign permission set group to the current user and enable an agent"
+echo "Go to OrgHub and connect to this org as model_api"
 echo "Run dev modelSetup after this"

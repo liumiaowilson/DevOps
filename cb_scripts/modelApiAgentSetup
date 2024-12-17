@@ -1,0 +1,10 @@
+# {
+#   "name": "modelApiAgentSetup",
+#   "description": "Set up agents for model api",
+#   "usage": "dev modelApiAgentSetup"
+# }
+rm -rf ~/modelApiAgent
+cp -r ~/mypim/projects/modelApiAgent ~/
+cd ~/modelApiAgent
+sf deploy project start -o $DefaultAlias --manifest ./package.xml -w 100
+sf org assign permset --name MFA -o $DefaultAlias

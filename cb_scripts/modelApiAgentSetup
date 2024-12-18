@@ -7,4 +7,6 @@ rm -rf ~/modelApiAgent
 cp -r ~/mypim/projects/modelApiAgent ~/
 cd ~/modelApiAgent
 sf deploy project start -o $DefaultAlias --manifest ./package.xml -w 100
+sf mypim run script -o $DefaultAlias -f ~/DevOps/cb_js/agentPopulateCredential.js
 sf org assign permset --name MFA -o $DefaultAlias
+sf org assign permset --name Agent -o $DefaultAlias

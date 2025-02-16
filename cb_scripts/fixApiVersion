@@ -1,0 +1,16 @@
+# {
+#   "name": "fixApiVersion",
+#   "description": "Change api version of all meta xml files in the given folder",
+#   "usage": "dev fixApiVersion <folder> <apiVersion>"
+# }
+if [ -z $1 ]; then
+    echo 'Metadata folder is required'
+    exit 0
+fi
+
+if [ -z $2 ]; then
+    echo 'Api version is required'
+    exit 0
+fi
+
+sf mypim run script -o $DefaultAlias -f ~/DevOps/cb_js/fixApiVersion.js $1 $2

@@ -5,11 +5,4 @@
 # }
 dir=$1
 
-sfdx force:mdapi:retrieve -k $dir/package.xml -u $DefaultAlias -r $dir/
-
-unzip $dir/unpackaged.zip -d $dir/
-
-cp -a $dir/unpackaged/* $dir/
-
-rm -r $dir/unpackaged*
-
+sf project retrieve start -o $DefaultAlias -c -x "$1"/package.xml

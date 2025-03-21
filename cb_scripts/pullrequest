@@ -11,4 +11,4 @@ dest=`git log --pretty=format:'%D' HEAD^ | grep 'origin/' | head -n1 | sed 's@or
 
 url="https://bitbucket.org/$remote/pull-requests/new?source=$remote::$branch&dest=$remote::$dest"
 
-python -m webbrowser $url
+python3 -m webbrowser $url

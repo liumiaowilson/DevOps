@@ -5,4 +5,4 @@
 # }
 sf project deploy start -o $DefaultAlias --metadata-dir ~/VfPagePoc/
 instanceUrl=`sf org display -o $DefaultAlias --verbose --json | jq -r .result.instanceUrl`
-python -m webbrowser $instanceUrl"/apex/TestVfPagePOC4735"
+open_url $instanceUrl"/apex/TestVfPagePOC4735"

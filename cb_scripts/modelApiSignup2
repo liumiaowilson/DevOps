@@ -3,7 +3,7 @@
 #   "description": "Sign up a model api playground",
 #   "usage": "dev modelApiSignup"
 # }
-python -m webbrowser https://trailhead.salesforce.com/content/learn/projects/quick-start-explore-the-coral-cloud-sample-app/get-to-know-the-coral-cloud-sample-app
+open_url https://trailhead.salesforce.com/content/learn/projects/quick-start-explore-the-coral-cloud-sample-app/get-to-know-the-coral-cloud-sample-app
 echo "Please authorize model api playground org after creation"
 echo "In Setup, enable Salesforce Generative AI"
 echo "Go to Einstein Trust Layer and turn it off"

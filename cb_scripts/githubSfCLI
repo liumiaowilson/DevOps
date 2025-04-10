@@ -3,4 +3,4 @@
 #   "description": "Open the github url for SFDX CLI plugins",
 #   "usage": "dev githubSfCLI"
 # }
-python -m webbrowser https://github.com/salesforcecli
+open_url https://github.com/salesforcecli

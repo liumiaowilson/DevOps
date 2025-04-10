@@ -3,4 +3,4 @@
 #   "description": "Open the github url for VSCode extensions",
 #   "usage": "dev githubVSCode"
 # }
-python -m webbrowser https://github.com/microsoft/vscode
+open_url https://github.com/microsoft/vscode

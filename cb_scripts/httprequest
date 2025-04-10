@@ -8,4 +8,4 @@ alias=$DefaultAlias
 instanceUrl=`sf org display --verbose --json -o $alias | jq -r .result.instanceUrl`
 accessToken=`sf org display --verbose --json -o $alias | jq -r .result.accessToken`
 url="https://mypim.lightning.force.com/lightning/n/Http_Request_Demo?c__instance_url="$instanceUrl"&c__access_token="$accessToken
-python -m webbrowser $url
+open_url $url

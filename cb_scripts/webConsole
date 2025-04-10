@@ -6,4 +6,4 @@
 alias=$DefaultAlias
 
 url=`sf org open -o $alias --json | jq -r .result.url`
-python -m webbrowser $url"&retURL=/_ui/common/apex/debug/ApexCSIPage"
+open_url $url"&retURL=/_ui/common/apex/debug/ApexCSIPage"

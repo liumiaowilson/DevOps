@@ -17,4 +17,4 @@ if [ -z $filePath ]; then
 fi
 sf mypim run script -o $DefaultAlias -f ~/DevOps/cb_js/publishToMyPIM.js $name $filePath
 
-python -m webbrowser "https://mypim.my.salesforce-sites.com/public/services/apexrest/file_public/"$name
+open_url "https://mypim.my.salesforce-sites.com/public/services/apexrest/file_public/"$name

@@ -4,4 +4,4 @@
 #   "usage": "dev copyAccessTokenScript"
 # }
 cat ~/DevOps/apex/printAccessToken.apex > ~/clipboard
-echo '{"command": "multiclip.fileToClipboard"}' | websocat ws://localhost:$REMOTE_CONTROL_PORT
+copy_to_clipboard

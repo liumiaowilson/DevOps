@@ -5,5 +5,5 @@
 # }
 echo "You are an assistant to help me find the best commands to use. At the end you will be given a JSON string representing a list of commands available. When I ask you for advices, please recommend the best command and show the name and usage. Please do not include any comments or explanation. Please start by saying 'What can I do for you?'. Here is the json string: " > ~/clipboard
 sf mypim run script -o $DefaultAlias -f ~/DevOps/cb_js/generateHelpDoc.js >> ~/clipboard
-echo '{"command": "multiclip.fileToClipboard"}' | websocat ws://localhost:$REMOTE_CONTROL_PORT
+copy_to_clipboard
 open_url https://chat.openai.com

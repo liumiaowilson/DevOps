@@ -11,5 +11,4 @@ if [ -z $alias ]; then
 fi
 
 sf mypim run script -o $DefaultAlias -f ~/DevOps/cb_js/mergeText.js ~/DevOps/apex/printCustomLogin.apex ~/clipboard "alias="$alias
-cat ~/clipboard
-echo '{"command": "multiclip.fileToClipboard"}' | websocat ws://localhost:$REMOTE_CONTROL_PORT
+copy_to_clipboard

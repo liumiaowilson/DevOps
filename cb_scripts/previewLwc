@@ -3,4 +3,5 @@
 #   "description": "Open a temporary page to preview lightning component",
 #   "usage": "dev previewLwc <cmpName> <params>"
 # }
-sf mypim run script -o $DefaultAlias -f ~/DevOps/cb_js/previewLwc.js $@
+url=`sf mypim run script -o $DefaultAlias -f ~/DevOps/cb_js/previewLwc.js $@`
+open_url $url

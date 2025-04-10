@@ -20,6 +20,5 @@
     const url = context.connection.instanceUrl + '/one/one.app#' + encodedCompDef;
 
     cmd.log(url);
-    context.open(url);
     return url;
 })

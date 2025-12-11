@@ -1,0 +1,12 @@
+# {
+#   "name": "open_chrome",
+#   "description": "Open the default org in chrome browser",
+#   "usage": "dev open_chrome"
+# }
+alias=$1
+
+if [ -z $alias ]; then
+    alias=$DefaultAlias
+fi
+
+sf org open -o $alias --browser=chrome

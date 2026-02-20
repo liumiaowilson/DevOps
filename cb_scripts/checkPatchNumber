@@ -1,0 +1,8 @@
+# {
+#   "name": "checkPatchNumber",
+#   "description": "Check the patch number of the default org",
+#   "usage": "dev checkPatchNumber"
+# }
+alias=$DefaultAlias
+
+sf mypim run script -o $alias -f ~/DevOps/cb_js/checkPatchNumber.js $@

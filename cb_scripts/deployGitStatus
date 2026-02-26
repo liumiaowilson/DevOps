@@ -1,10 +1,16 @@
 # {
 #   "name": "deployGitStatus",
 #   "description": "Deploy all metadata files listed by git status command",
-#   "usage": "dev deployGitStatus"
+#   "usage": "dev deployGitStatus [orgAlias]"
 # }
+alias=$1
+
+if [ -z $alias ]; then
+    alias=$DefaultAlias
+fi
+
 git status -s > ~/tmp.txt
-paths=`sf mypim run script -o $DefaultAlias -f ~/DevOps/cb_js/concatGitStatusLines.js ~/tmp.txt`
-cmd=`sf mypim run script -o $DefaultAlias -f ~/DevOps/cb_js/buildProjectDeployCmd.js $paths`
+paths=`sf mypim run script -o $alias -f ~/DevOps/cb_js/concatGitStatusLines.js ~/tmp.txt`
+cmd=`sf mypim run script -o $alias -f ~/DevOps/cb_js/buildProjectDeployCmd.js $paths`
 eval $cmd
 rm ~/tmp.txt

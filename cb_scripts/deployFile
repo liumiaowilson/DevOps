@@ -1,13 +1,15 @@
 # {
 #   "name": "deployFile",
 #   "description": "Deploy all metadata listed in the file to the default org",
-#   "usage": "dev deployFile <file>"
+#   "usage": "dev deployFile <file> [alias]"
 # }
 if [ -z $1 ]; then
     echo 'File is required'
     exit 0
 fi
 
-paths=`sf mypim run script -o $DefaultAlias -f ~/DevOps/cb_js/concatLinesFromFile.js $1`
-cmd=`sf mypim run script -o $DefaultAlias -f ~/DevOps/cb_js/buildProjectDeployCmd.js $paths`
+alias=${2:-$DefaultAlias}
+
+paths=`sf mypim run script -o $alias -f ~/DevOps/cb_js/concatLinesFromFile.js $1`
+cmd=`sf mypim run script -o $alias -f ~/DevOps/cb_js/buildProjectDeployCmd.js $paths`
 eval $cmd

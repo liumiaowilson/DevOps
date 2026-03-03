@@ -1,11 +1,13 @@
 # {
 #   "name": "deployPath",
 #   "description": "Deploy the metadata file in the given path",
-#   "usage": "dev deployPath <path>"
+#   "usage": "dev deployPath <path> [alias]"
 # }
 if [ -z $1 ]; then
     echo 'Path is required'
     exit 0
 fi
 
-sf project deploy start -o $DefaultAlias --ignore-conflicts -d "$1"
+alias=${2:-$DefaultAlias}
+
+sf project deploy start -o $alias --ignore-conflicts -d "$1"

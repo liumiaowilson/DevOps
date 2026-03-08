@@ -1,0 +1,8 @@
+# {
+#   "name": "quickCommit",
+#   "description": "Stage all changes and commit with an auto-generated message",
+#   "usage": "dev quickCommit"
+# }
+
+source ~/.bashrc.local
+myclaude --dangerously-skip-permissions --verbose --output-format stream-json -p "/quick-commit $(pwd)" | jq -r 'select(.type == "assistant") | .message.content[] | select(.type == "text") | .text'

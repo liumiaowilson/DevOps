@@ -24,6 +24,7 @@ fi
 
 "$BROWSER" \
   --remote-debugging-port=9222 \
-  --user-data-dir="$HOME/.chrome-debug-profile" &>/dev/null &
+  --user-data-dir="$HOME/.chrome-debug-profile" \
+  --no-first-run &>/dev/null &
 echo $! > "$HOME/.chrome-debug-profile/.pid"
 echo "Debug Chrome started (PID $!)"

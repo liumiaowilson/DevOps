@@ -6,8 +6,14 @@ if [ -f "$PIDFILE" ] && kill -0 "$(cat "$PIDFILE")" 2>/dev/null; then
   exit 1
 fi
 
+# Fresh profile with theme
+rm -rf "$HOME/.chrome-debug-profile"
+mkdir -p "$HOME/.chrome-debug-profile/Default"
+echo '{"browser":{"theme":{"color_variant2":1,"user_color2":-806210}}}' \
+  > "$HOME/.chrome-debug-profile/Default/Preferences"
+
 /Applications/Google\ Chrome.app/Contents/MacOS/Google\ Chrome \
   --remote-debugging-port=9222 \
   --user-data-dir="$HOME/.chrome-debug-profile" &>/dev/null &
-echo $! > "$PIDFILE"
+echo $! > "$HOME/.chrome-debug-profile/.pid"
 echo "Debug Chrome started (PID $!)"

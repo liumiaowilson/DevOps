@@ -1,5 +1,7 @@
 (function(cmd, context) {
-    const username = context.argv[0];
+    const useChrome = context.argv.includes('--chrome');
+    const filteredArgv = context.argv.filter(a => a !== '--chrome');
+    const username = filteredArgv[0];
     let usernamePromise = null;
     if(username) {
         usernamePromise = Promise.resolve(username);
@@ -53,7 +55,8 @@
                         const orgId = data.records[0].Id;
                         const url = `${connection.instanceUrl}/servlet/servlet.su?oid=${orgId}&suorgadminid=${user.Id}&retURL=/005?isUserEntityOverride=1&retURL=%2Fsetup%2Fhome&appLayout=setup&tour=&isdtp=p1&sfdcIFrameOrigin=https%3A%2F%2F${connection.instanceUrl}&sfdcIFrameHost=web&nonce=d6416adec718d525eedb512a964cd39c2125227d8838422d8374667c7b6761eb&clc=1&targetURL=/home/home.jsp&`;
 
-                        context.open(url);
+                        const openFn = useChrome ? context.openChrome : context.open;
+                        openFn(url);
 
                         return url;
                     });

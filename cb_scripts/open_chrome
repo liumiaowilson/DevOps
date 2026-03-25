@@ -9,4 +9,6 @@ if [ -z $alias ]; then
     alias=$DefaultAlias
 fi
 
-sf org open -o $alias --browser=chrome
+url=$(sf org open -o $alias --url-only 2>/dev/null | grep -o 'https://[^ ]*')
+echo "$url"
+open -a "Google Chrome" "$url"

@@ -1,0 +1,8 @@
+# {
+#   "name": "loginAs_debug_chrome",
+#   "description": "Login as selected user in the default org (opens in debug Chrome)",
+#   "usage": "dev loginAs_debug_chrome"
+# }
+alias=$DefaultAlias
+
+sf mypim run script -o $alias -f ~/DevOps/cb_js/loginAs.js -- --debug-chrome

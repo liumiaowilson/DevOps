@@ -1,6 +1,7 @@
 (function(cmd, context) {
     const useChrome = context.argv.includes('--chrome');
-    const filteredArgv = context.argv.filter(a => a !== '--chrome');
+    const useDebugChrome = context.argv.includes('--debug-chrome');
+    const filteredArgv = context.argv.filter(a => a !== '--chrome' && a !== '--debug-chrome');
     const username = filteredArgv[0];
     let usernamePromise = null;
     if(username) {
@@ -55,7 +56,7 @@
                         const orgId = data.records[0].Id;
                         const url = `${connection.instanceUrl}/servlet/servlet.su?oid=${orgId}&suorgadminid=${user.Id}&retURL=/005?isUserEntityOverride=1&retURL=%2Fsetup%2Fhome&appLayout=setup&tour=&isdtp=p1&sfdcIFrameOrigin=https%3A%2F%2F${connection.instanceUrl}&sfdcIFrameHost=web&nonce=d6416adec718d525eedb512a964cd39c2125227d8838422d8374667c7b6761eb&clc=1&targetURL=/home/home.jsp&`;
 
-                        const openFn = useChrome ? context.openChrome : context.open;
+                        const openFn = useDebugChrome ? context.openDebugChrome : useChrome ? context.openChrome : context.open;
                         cmd.log(url);
                         openFn(url);
 

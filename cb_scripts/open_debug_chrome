@@ -7,7 +7,7 @@
 PIDFILE="$HOME/.chrome-debug-profile/.pid"
 
 if ! [ -f "$PIDFILE" ] || ! kill -0 "$(cat "$PIDFILE")" 2>/dev/null; then
-  echo "Debug Chrome is not running. Start it first with: dev startChrome"
+  echo "Debug Chrome is not running. Start it first with: dev start_debug_chrome"
   exit 1
 fi
 
@@ -19,6 +19,16 @@ fi
 
 url=$(sf org open -o $alias --url-only 2>/dev/null | grep -o 'https://[^ ]*')
 echo "$url"
-/Applications/Google\ Chrome.app/Contents/MacOS/Google\ Chrome \
+# Prefer Chrome Canary, fall back to regular Chrome
+CANARY="/Applications/Google Chrome Canary.app/Contents/MacOS/Google Chrome Canary"
+CHROME="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+
+if [ -x "$CANARY" ]; then
+  BROWSER="$CANARY"
+else
+  BROWSER="$CHROME"
+fi
+
+"$BROWSER" \
   --user-data-dir="$HOME/.chrome-debug-profile" \
   "$url" &>/dev/null &

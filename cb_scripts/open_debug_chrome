@@ -1,0 +1,24 @@
+# {
+#   "name": "open_debug_chrome",
+#   "description": "Open the default org in debug chrome browser",
+#   "usage": "dev open_debug_chrome"
+# }
+
+PIDFILE="$HOME/.chrome-debug-profile/.pid"
+
+if ! [ -f "$PIDFILE" ] || ! kill -0 "$(cat "$PIDFILE")" 2>/dev/null; then
+  echo "Debug Chrome is not running. Start it first with: dev startChrome"
+  exit 1
+fi
+
+alias=$1
+
+if [ -z $alias ]; then
+    alias=$DefaultAlias
+fi
+
+url=$(sf org open -o $alias --url-only 2>/dev/null | grep -o 'https://[^ ]*')
+echo "$url"
+/Applications/Google\ Chrome.app/Contents/MacOS/Google\ Chrome \
+  --user-data-dir="$HOME/.chrome-debug-profile" \
+  "$url" &>/dev/null &

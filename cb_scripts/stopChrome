@@ -1,0 +1,16 @@
+#!/bin/bash
+PIDFILE="$HOME/.chrome-debug-profile/.pid"
+
+if [ ! -f "$PIDFILE" ]; then
+  echo "No PID file found — debug Chrome may not be running"
+  exit 1
+fi
+
+PID=$(cat "$PIDFILE")
+if kill -0 "$PID" 2>/dev/null; then
+  kill "$PID"
+  echo "Debug Chrome stopped (PID $PID)"
+else
+  echo "Debug Chrome process (PID $PID) is not running"
+fi
+rm -f "$PIDFILE"

@@ -1,0 +1,13 @@
+#!/bin/bash
+PIDFILE="$HOME/.chrome-debug-profile/.pid"
+
+if [ -f "$PIDFILE" ] && kill -0 "$(cat "$PIDFILE")" 2>/dev/null; then
+  echo "Debug Chrome is already running (PID $(cat "$PIDFILE"))"
+  exit 1
+fi
+
+/Applications/Google\ Chrome.app/Contents/MacOS/Google\ Chrome \
+  --remote-debugging-port=9222 \
+  --user-data-dir="$HOME/.chrome-debug-profile" &>/dev/null &
+echo $! > "$PIDFILE"
+echo "Debug Chrome started (PID $!)"

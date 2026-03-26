@@ -7,8 +7,9 @@
 PIDFILE="$HOME/.chrome-debug-profile/.pid"
 
 if ! [ -f "$PIDFILE" ] || ! kill -0 "$(cat "$PIDFILE")" 2>/dev/null; then
-  echo "Debug Chrome is not running. Start it first with: dev start_debug_chrome"
-  exit 1
+  echo "Debug Chrome is not running. Starting it..."
+  source "$(dirname "$0")/start_debug_chrome"
+  sleep 1
 fi
 
 alias=$1

@@ -19,6 +19,7 @@ CHROME="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
 if [ -x "$CANARY" ]; then
   BROWSER="$CANARY"
 else
+  echo "⚠ Chrome Canary not found — falling back to regular Chrome"
   BROWSER="$CHROME"
 fi
 

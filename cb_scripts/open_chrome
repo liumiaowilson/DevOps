@@ -9,6 +9,6 @@ if [ -z $alias ]; then
     alias=$DefaultAlias
 fi
 
-url=$(sf org open -o $alias --url-only 2>/dev/null | grep -o 'https://[^ ]*')
+url=$(sf org open -o $alias --url-only --json 2>/dev/null | python3 -c "import sys,json; print(json.load(sys.stdin)['result']['url'])")
 echo "$url"
 open -a "Google Chrome" "$url"

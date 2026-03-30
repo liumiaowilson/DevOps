@@ -9,7 +9,7 @@ fi
 # Fresh profile with theme
 rm -rf "$HOME/.chrome-debug-profile"
 mkdir -p "$HOME/.chrome-debug-profile/Default"
-echo '{"browser":{"theme":{"color_variant2":1,"user_color2":-806210}}}' \
+echo '{"browser":{"theme":{"color_variant2":1,"user_color2":-806210}},"devtools":{"preferences":{"currentDockState":"\"bottom\""}}}' \
   > "$HOME/.chrome-debug-profile/Default/Preferences"
 
 # Prefer Chrome Canary, fall back to regular Chrome
@@ -26,6 +26,7 @@ fi
 "$BROWSER" \
   --remote-debugging-port=9222 \
   --user-data-dir="$HOME/.chrome-debug-profile" \
-  --no-first-run &>/dev/null &
+  --no-first-run \
+  --start-maximized &>/dev/null &
 echo $! > "$HOME/.chrome-debug-profile/.pid"
 echo "Debug Chrome started (PID $!)"

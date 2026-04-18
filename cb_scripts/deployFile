@@ -10,6 +10,6 @@ fi
 
 alias=${2:-$DefaultAlias}
 
-paths=`sf mypim run script -o $alias -f ~/DevOps/cb_js/concatLinesFromFile.js $1`
-cmd=`sf mypim run script -o $alias -f ~/DevOps/cb_js/buildProjectDeployCmd.js $paths`
-eval $cmd
+paths=`sf mypim run script -o $alias -f ~/DevOps/cb_js/concatLinesFromFile.js "$1"`
+cmd=`sf mypim run script -o $alias -f ~/DevOps/cb_js/buildProjectDeployCmd.js "$paths"`
+eval "$cmd"

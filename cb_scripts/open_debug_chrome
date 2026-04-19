@@ -32,4 +32,5 @@ fi
 
 "$BROWSER" \
   --user-data-dir="$HOME/.chrome-debug-profile" \
+  --unsafely-disable-devtools-self-xss-warnings \
   "$url" &>/dev/null &

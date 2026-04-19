@@ -26,6 +26,7 @@ fi
 "$BROWSER" \
   --remote-debugging-port=9222 \
   --user-data-dir="$HOME/.chrome-debug-profile" \
+  --unsafely-disable-devtools-self-xss-warnings \
   --no-first-run \
   --start-maximized &>/dev/null &
 echo $! > "$HOME/.chrome-debug-profile/.pid"

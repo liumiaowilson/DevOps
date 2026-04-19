@@ -1,0 +1,24 @@
+# {
+#   "name": "deployForceGitStatus",
+#   "description": "Deploy metadata files listed by git status, limited to paths under force-app",
+#   "usage": "dev deployForceGitStatus [orgAlias]"
+# }
+alias=$1
+
+if [ -z $alias ]; then
+    alias=$DefaultAlias
+fi
+
+git status -s > ~/tmp.txt
+paths=`sf mypim run script -o $alias -f ~/DevOps/cb_js/concatGitStatusLines.js ~/tmp.txt`
+paths=`echo "$paths" | tr ',' '\n' | grep '^force-app' | paste -sd ',' -`
+
+if [ -z "$paths" ]; then
+    echo "No force-app paths to deploy"
+    rm ~/tmp.txt
+    exit 0
+fi
+
+cmd=`sf mypim run script -o $alias -f ~/DevOps/cb_js/buildProjectDeployCmd.js $paths`
+eval $cmd
+rm ~/tmp.txt

@@ -1,0 +1,20 @@
+# {
+#   "name": "frameMovie",
+#   "description": "Frame the next un-processed Movie Item__c into JPEGs in the given directory and mark it processed",
+#   "usage": "dev frameMovie <directory>"
+# }
+dir=$1
+alias=${2:-$DefaultAlias}
+
+if [ -z "$dir" ]; then
+    echo 'Directory is required'
+    exit 1
+fi
+
+absDir=$(cd "$dir" 2>/dev/null && pwd)
+if [ -z "$absDir" ]; then
+    echo "Directory does not exist: $dir"
+    exit 1
+fi
+
+sf mypim run script -o $alias -f ~/DevOps/cb_js/frameMovie.js "$absDir"

@@ -1,0 +1,12 @@
+# {
+#   "name": "summarizeMovie",
+#   "description": "Run frameMovie, frameCompare, and frameUpload in sequence on the given directory (defaults to ~/Downloads/frames)",
+#   "usage": "dev summarizeMovie [directory]"
+# }
+dir=${1:-$HOME/Downloads/frames}
+
+mkdir -p "$dir"
+
+~/DevOps/cb_scripts/frameMovie "$dir" \
+    && ~/DevOps/cb_scripts/frameCompare "$dir" \
+    && ~/DevOps/cb_scripts/frameUpload "$dir"

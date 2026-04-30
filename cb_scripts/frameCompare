@@ -1,0 +1,19 @@
+# {
+#   "name": "frameCompare",
+#   "description": "Run frameCompare.py against the given directory of frames",
+#   "usage": "dev frameCompare <directory>"
+# }
+dir=$1
+
+if [ -z "$dir" ]; then
+    echo 'Directory is required'
+    exit 1
+fi
+
+absDir=$(cd "$dir" 2>/dev/null && pwd)
+if [ -z "$absDir" ]; then
+    echo "Directory does not exist: $dir"
+    exit 1
+fi
+
+python3 ~/mypim-codebuilder/scripts/frame-compare.py "$absDir"

@@ -17,10 +17,6 @@
         const cp = cpMod.default || cpMod;
         const os = osMod.default || osMod;
 
-        for(const entry of fs.readdirSync(dir)) {
-            fs.rmSync(path.join(dir, entry), { recursive: true, force: true });
-        }
-
         context.ux.action.start('Finding next Movie');
         return context.mypim.query(
             `SELECT Id, Extension__c FROM Item__c WHERE Type__c = 'Movie' AND End_Date__c = null ORDER BY CreatedDate ASC LIMIT 1`

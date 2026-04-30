@@ -17,4 +17,6 @@ if [ -z "$absDir" ]; then
     exit 1
 fi
 
+find "$absDir" -mindepth 1 -delete
+
 sf mypim run script -o $alias -f ~/DevOps/cb_js/frameMovie.js "$absDir"

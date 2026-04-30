@@ -7,6 +7,6 @@ dir=${1:-$HOME/Downloads/frames}
 
 mkdir -p "$dir"
 
-~/DevOps/cb_scripts/frameMovie "$dir" \
-    && ~/DevOps/cb_scripts/frameCompare "$dir" \
-    && ~/DevOps/cb_scripts/frameUpload "$dir"
+dev frameMovie "$dir" \
+    && dev frameCompare "$dir" \
+    && dev frameUpload "$dir"

@@ -1,0 +1,14 @@
+# {
+#   "name": "describeMovie",
+#   "description": "Summarize a Movie Item__c.Text__c (frame descriptions) into a short narrative via ollama uncensored model",
+#   "usage": "dev describeMovie <recordId> [alias]"
+# }
+recordId=$1
+alias=${2:-$DefaultAlias}
+
+if [ -z "$recordId" ]; then
+    echo 'recordId is required'
+    exit 1
+fi
+
+sf mypim run script -o $alias -f ~/DevOps/cb_js/describeMovie.js "$recordId"

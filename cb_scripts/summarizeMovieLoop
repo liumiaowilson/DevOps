@@ -1,0 +1,20 @@
+# {
+#   "name": "summarizeMovieLoop",
+#   "description": "Run dev summarizeMovie N times in a loop. Prompts for N if not provided.",
+#   "usage": "dev summarizeMovieLoop <N>"
+# }
+N=$1
+
+if [ -z "$N" ]; then
+    read -p "Number of loops to run: " N
+fi
+
+if ! [[ "$N" =~ ^[1-9][0-9]*$ ]]; then
+    echo "Error: N must be a positive integer (got: '$N')"
+    exit 1
+fi
+
+for ((i = 1; i <= N; i++)); do
+    echo "===== Run $i of $N ====="
+    dev summarizeMovie || { echo "Run $i failed; aborting."; exit 1; }
+done

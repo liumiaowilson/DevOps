@@ -59,8 +59,10 @@
                 return context.mypim.update('Item__c', {
                     Id: item.Id,
                     End_Date__c: new Date().toISOString(),
-                }).then(() => {
-                    cmd.logSuccess('Framed movie ' + item.Id + ' into ' + dir);
+                }).then(() => context.mypim.query(
+                    `SELECT COUNT() FROM Item__c WHERE Type__c = 'Movie' AND End_Date__c = null`
+                )).then(countResult => {
+                    cmd.logSuccess('Framed movie ' + item.Id + ' into ' + dir + ' (' + countResult.totalSize + ' remaining)');
                 });
             });
         }).finally(() => context.ux.action.stop());

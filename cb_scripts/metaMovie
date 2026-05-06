@@ -1,0 +1,14 @@
+# {
+#   "name": "metaMovie",
+#   "description": "Probe Movie Item__c URL for duration/resolution and save to Price__c, Password__c, Show_In_UI__c",
+#   "usage": "dev metaMovie <recordId> [alias]"
+# }
+recordId=$1
+alias=${2:-$DefaultAlias}
+
+if [ -z "$recordId" ]; then
+    echo 'recordId is required'
+    exit 1
+fi
+
+sf mypim run script -o $alias -f ~/DevOps/cb_js/metaMovie.js "$recordId"

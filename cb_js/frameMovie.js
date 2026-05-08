@@ -17,6 +17,20 @@
         const cp = cpMod.default || cpMod;
         const os = osMod.default || osMod;
 
+        // The python framing step idles the Salesforce keep-alive socket for minutes,
+        // so post-spawn calls can land on a half-closed connection. Retry once on hangup.
+        const isHangup = err => {
+            if(!err) return false;
+            if(err.code === 'ECONNRESET' || err.code === 'EPIPE') return true;
+            const msg = ((err.message || '') + '').toLowerCase();
+            return msg.includes('socket hang up') || msg.includes('econnreset');
+        };
+        const retryOnHangup = fn => Promise.resolve().then(fn).catch(err => {
+            if(!isHangup(err)) throw err;
+            cmd.log('Connection dropped (' + (err.code || err.message) + '), retrying...');
+            return fn();
+        });
+
         context.ux.action.start('Finding next Movie');
         return context.mypim.query(
             `SELECT Id, Extension__c FROM Item__c WHERE Type__c = 'Movie' AND End_Date__c = null ORDER BY CreatedDate ASC LIMIT 1`
@@ -56,12 +70,12 @@
                 fs.writeFileSync(metaPath, JSON.stringify(meta, null, 4));
 
                 context.ux.action.start('Marking record processed');
-                return context.mypim.update('Item__c', {
+                return retryOnHangup(() => context.mypim.update('Item__c', {
                     Id: item.Id,
                     End_Date__c: new Date().toISOString(),
-                }).then(() => context.mypim.query(
+                })).then(() => retryOnHangup(() => context.mypim.query(
                     `SELECT COUNT() FROM Item__c WHERE Type__c = 'Movie' AND End_Date__c = null`
-                )).then(countResult => {
+                ))).then(countResult => {
                     cmd.logSuccess('Framed movie ' + item.Id + ' into ' + dir + ' (' + countResult.totalSize + ' remaining)');
                 });
             });

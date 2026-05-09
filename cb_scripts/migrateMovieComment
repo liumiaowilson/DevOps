@@ -1,0 +1,8 @@
+# {
+#   "name": "migrateMovieComment",
+#   "description": "Migrate Item__c Movie records: consolidate Description__c/Question__c into Question__c and clear Description__c",
+#   "usage": "dev migrateMovieComment [alias]"
+# }
+alias=${1:-$DefaultAlias}
+
+sf mypim run script -o $alias -f ~/DevOps/cb_js/migrateMovieComment.js

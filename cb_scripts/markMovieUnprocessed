@@ -1,0 +1,8 @@
+# {
+#   "name": "markMovieUnprocessed",
+#   "description": "Mark all Movie Item__c records as unprocessed (Show_In_UI__c = false)",
+#   "usage": "dev markMovieUnprocessed [alias]"
+# }
+alias=${1:-$DefaultAlias}
+
+sf mypim run script -o $alias -f ~/DevOps/cb_js/markMovieUnprocessed.js

@@ -1,0 +1,27 @@
+#!/bin/bash
+PIDFILE="$HOME/.ollama.pid"
+
+if [ -f "$PIDFILE" ]; then
+  PID=$(cat "$PIDFILE")
+  if kill -0 "$PID" 2>/dev/null; then
+    kill "$PID"
+    for i in $(seq 1 10); do
+      if ! kill -0 "$PID" 2>/dev/null; then
+        break
+      fi
+      sleep 0.3
+    done
+    if kill -0 "$PID" 2>/dev/null; then
+      echo "ollama (PID $PID) did not stop — sending SIGKILL"
+      kill -9 "$PID" 2>/dev/null
+    fi
+    echo "ollama stopped (PID $PID)"
+  else
+    echo "ollama PID $PID was not running"
+  fi
+  rm -f "$PIDFILE"
+  exit 0
+fi
+
+echo "no PID file at $PIDFILE — ollama was not started by start_ollama"
+exit 0

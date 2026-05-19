@@ -1,0 +1,35 @@
+#!/bin/bash
+PIDFILE="$HOME/.ollama.pid"
+LOGFILE="$HOME/.ollama.log"
+OLLAMA_ORIGINS_VALUE="*"
+
+if [ -f "$PIDFILE" ] && kill -0 "$(cat "$PIDFILE")" 2>/dev/null; then
+  echo "ollama already running (PID $(cat "$PIDFILE"))"
+  exit 0
+fi
+
+if lsof -ti :11434 >/dev/null 2>&1; then
+  EXISTING_PID=$(lsof -ti :11434 | head -1)
+  echo "✗ Port 11434 already in use by PID $EXISTING_PID (likely the Ollama desktop app — quit it first so OLLAMA_ORIGINS takes effect)"
+  exit 1
+fi
+
+if ! command -v ollama >/dev/null 2>&1; then
+  echo "✗ ollama not found in PATH. Install with: brew install ollama"
+  exit 1
+fi
+
+OLLAMA_ORIGINS="$OLLAMA_ORIGINS_VALUE" ollama serve >"$LOGFILE" 2>&1 &
+echo $! > "$PIDFILE"
+echo "ollama started (PID $!) with OLLAMA_ORIGINS=$OLLAMA_ORIGINS_VALUE"
+
+for i in $(seq 1 20); do
+  if curl -sf http://127.0.0.1:11434/ >/dev/null 2>&1; then
+    echo "ollama is responding on http://127.0.0.1:11434"
+    exit 0
+  fi
+  sleep 0.5
+done
+
+echo "✗ Timed out waiting for ollama to come up. Check $LOGFILE"
+exit 1

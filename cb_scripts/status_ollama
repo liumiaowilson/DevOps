@@ -1,0 +1,22 @@
+#!/bin/bash
+PIDFILE="$HOME/.ollama.pid"
+
+if [ -f "$PIDFILE" ] && kill -0 "$(cat "$PIDFILE")" 2>/dev/null; then
+  PID=$(cat "$PIDFILE")
+  echo "ollama running (PID $PID)"
+  if curl -sf http://127.0.0.1:11434/ >/dev/null 2>&1; then
+    echo "endpoint http://127.0.0.1:11434 responding"
+    exit 0
+  fi
+  echo "✗ endpoint not responding"
+  exit 1
+fi
+
+if lsof -ti :11434 >/dev/null 2>&1; then
+  EXISTING_PID=$(lsof -ti :11434 | head -1)
+  echo "ollama not started by start_ollama, but port 11434 is held by PID $EXISTING_PID (likely the desktop app)"
+  exit 0
+fi
+
+echo "ollama not running"
+exit 1

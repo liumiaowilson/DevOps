@@ -1,0 +1,21 @@
+#!/bin/bash
+PIDFILE="$HOME/.ollama-tunnel.pid"
+NGROK_API="http://127.0.0.1:4040/api/tunnels"
+
+if [ -f "$PIDFILE" ] && kill -0 "$(cat "$PIDFILE")" 2>/dev/null; then
+  PID=$(cat "$PIDFILE")
+  echo "ngrok tunnel running (PID $PID)"
+  URL=$(curl -s "$NGROK_API" 2>/dev/null \
+    | grep -o '"public_url":"https://[^"]*"' \
+    | head -1 \
+    | sed 's/"public_url":"//; s/"$//')
+  if [ -n "$URL" ]; then
+    echo "Public URL: $URL"
+    exit 0
+  fi
+  echo "✗ ngrok local API not reachable at $NGROK_API"
+  exit 1
+fi
+
+echo "ngrok tunnel not running"
+exit 1

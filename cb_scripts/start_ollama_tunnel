@@ -5,16 +5,29 @@ NGROK_API="http://127.0.0.1:4040/api/tunnels"
 
 if [ -f "$PIDFILE" ] && kill -0 "$(cat "$PIDFILE")" 2>/dev/null; then
   echo "ngrok tunnel already running (PID $(cat "$PIDFILE"))"
-else
-  if ! command -v ngrok >/dev/null 2>&1; then
-    echo "✗ ngrok not found in PATH. Install with: brew install ngrok"
-    exit 1
-  fi
-
-  ngrok http 11434 --host-header=localhost:11434 --log=stdout >"$LOGFILE" 2>&1 &
-  echo $! > "$PIDFILE"
-  echo "ngrok started (PID $!)"
+  exit 0
 fi
+
+if ! command -v ngrok >/dev/null 2>&1; then
+  echo "✗ ngrok not found in PATH. Install with: brew install ngrok"
+  exit 1
+fi
+
+RAW_URL=$(sf mypim run script -o "$DefaultAlias" -f ~/DevOps/cb_js/readNgrokUrl.js)
+if [ -z "$RAW_URL" ]; then
+  echo "✗ Failed to read ngrok URL from Config_Item__c('/API/ngrok/url')"
+  exit 1
+fi
+
+NGROK_HOST=$(echo "$RAW_URL" | sed -E 's#^https?://##; s#/.*$##')
+if [ -z "$NGROK_HOST" ]; then
+  echo "✗ Could not derive ngrok hostname from '$RAW_URL'"
+  exit 1
+fi
+
+ngrok http 11434 --host-header=localhost:11434 --url="$NGROK_HOST" --log=stdout >"$LOGFILE" 2>&1 &
+echo $! > "$PIDFILE"
+echo "ngrok started (PID $!) pinned to $NGROK_HOST"
 
 # Poll ngrok's local API for the public URL (up to ~10s)
 for i in $(seq 1 20); do
@@ -24,7 +37,6 @@ for i in $(seq 1 20); do
     | sed 's/"public_url":"//; s/"$//')
   if [ -n "$URL" ]; then
     echo "Public URL: $URL"
-    sf mypim run script -o $DefaultAlias -f ~/DevOps/cb_js/saveNgrokUrl.js "$URL"
     exit 0
   fi
   sleep 0.5

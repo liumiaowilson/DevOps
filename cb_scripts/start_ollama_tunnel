@@ -25,7 +25,7 @@ if [ -z "$NGROK_HOST" ]; then
   exit 1
 fi
 
-ngrok http 11434 --host-header=localhost:11434 --url="$NGROK_HOST" --log=stdout >"$LOGFILE" 2>&1 &
+ngrok http 11434 --host-header=localhost:11434 --url="$NGROK_HOST" --response-header-add "Access-Control-Allow-Origin: *" --log=stdout >"$LOGFILE" 2>&1 &
 echo $! > "$PIDFILE"
 echo "ngrok started (PID $!) pinned to $NGROK_HOST"
 

@@ -1,0 +1,23 @@
+#!/bin/bash
+PIDFILE="$HOME/.ollama-tunnel.pid"
+LOGFILE="$HOME/.ollama-tunnel.log"
+
+if [ -f "$PIDFILE" ] && kill -0 "$(cat "$PIDFILE")" 2>/dev/null; then
+  PID=$(cat "$PIDFILE")
+  kill "$PID" 2>/dev/null
+  sleep 1
+  if kill -0 "$PID" 2>/dev/null; then
+    kill -9 "$PID" 2>/dev/null
+  fi
+  echo "ngrok tunnel stopped (PID $PID)"
+else
+  echo "No tracked ngrok tunnel running."
+  # Fall back to killing any stray ngrok process tunneling port 11434
+  STRAY=$(pgrep -f "ngrok http 11434" 2>/dev/null)
+  if [ -n "$STRAY" ]; then
+    echo "Found untracked ngrok process(es): $STRAY — killing."
+    kill $STRAY 2>/dev/null
+  fi
+fi
+
+rm -f "$PIDFILE" "$LOGFILE"

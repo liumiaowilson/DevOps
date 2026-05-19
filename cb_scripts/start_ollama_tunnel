@@ -1,0 +1,33 @@
+#!/bin/bash
+PIDFILE="$HOME/.ollama-tunnel.pid"
+LOGFILE="$HOME/.ollama-tunnel.log"
+NGROK_API="http://127.0.0.1:4040/api/tunnels"
+
+if [ -f "$PIDFILE" ] && kill -0 "$(cat "$PIDFILE")" 2>/dev/null; then
+  echo "ngrok tunnel already running (PID $(cat "$PIDFILE"))"
+else
+  if ! command -v ngrok >/dev/null 2>&1; then
+    echo "✗ ngrok not found in PATH. Install with: brew install ngrok"
+    exit 1
+  fi
+
+  ngrok http 11434 --host-header=localhost:11434 --log=stdout >"$LOGFILE" 2>&1 &
+  echo $! > "$PIDFILE"
+  echo "ngrok started (PID $!)"
+fi
+
+# Poll ngrok's local API for the public URL (up to ~10s)
+for i in $(seq 1 20); do
+  URL=$(curl -s "$NGROK_API" 2>/dev/null \
+    | grep -o '"public_url":"https://[^"]*"' \
+    | head -1 \
+    | sed 's/"public_url":"//; s/"$//')
+  if [ -n "$URL" ]; then
+    echo "Public URL: $URL"
+    exit 0
+  fi
+  sleep 0.5
+done
+
+echo "✗ Timed out waiting for ngrok public URL. Check $LOGFILE"
+exit 1

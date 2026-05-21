@@ -1,0 +1,8 @@
+# {
+#   "name": "markMangaUnprocessed",
+#   "description": "Mark all Manga Item__c records as unprocessed (Show_In_UI__c = false)",
+#   "usage": "dev markMangaUnprocessed [alias]"
+# }
+alias=${1:-$DefaultAlias}
+
+sf mypim run script -o $alias -f ~/DevOps/cb_js/markMangaUnprocessed.js

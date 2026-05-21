@@ -1,0 +1,8 @@
+# {
+#   "name": "markCartoonUnprocessed",
+#   "description": "Mark all Cartoon Item__c records as unprocessed (Show_In_UI__c = false)",
+#   "usage": "dev markCartoonUnprocessed [alias]"
+# }
+alias=${1:-$DefaultAlias}
+
+sf mypim run script -o $alias -f ~/DevOps/cb_js/markCartoonUnprocessed.js

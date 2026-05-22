@@ -55,7 +55,7 @@ while :; do
     mtimeStr=$(stat -f '%Sm' -t '%Y-%m-%d %H:%M:%S' "$oldestFile")
     echo "===== [$i] $oldestFile (size: $size, mtime: $mtimeStr) — $(date '+%Y-%m-%d %H:%M:%S') ====="
 
-    if dev uploadNovel "$oldestFile"; then
+    if sh "$ScriptsDir/uploadNovel" "$oldestFile"; then
         mv "$oldestFile" "$targetDir/" || { echo "Move failed: $oldestFile -> $targetDir"; exit 1; }
     else
         echo "Upload failed for $oldestFile; aborting."

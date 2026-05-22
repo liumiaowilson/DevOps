@@ -1,0 +1,25 @@
+# {
+#   "name": "uploadNovel",
+#   "description": "Upload novel text file as chunked Item__c records under the Novel PlainTextCategory parent",
+#   "usage": "dev uploadNovel <filePath>"
+# }
+filePath=$1
+alias=${2:-$DefaultAlias}
+
+if [ -z "$filePath" ]; then
+    echo 'File path is required'
+    exit 1
+fi
+
+absDir=$(cd "$(dirname "$filePath")" 2>/dev/null && pwd)
+if [ -z "$absDir" ]; then
+    echo "File does not exist: $filePath"
+    exit 1
+fi
+absPath="$absDir/$(basename "$filePath")"
+if [ ! -f "$absPath" ]; then
+    echo "File does not exist: $filePath"
+    exit 1
+fi
+
+sf mypim run script -o $alias -f ~/DevOps/cb_js/uploadNovel.js "$absPath"

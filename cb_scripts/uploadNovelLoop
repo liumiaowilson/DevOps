@@ -1,0 +1,64 @@
+# {
+#   "name": "uploadNovelLoop",
+#   "description": "Repeatedly upload the oldest file from <sourceDir> via dev uploadNovel, moving each to <targetDir> on success. Stops on first failure, on empty source, or after N iterations.",
+#   "usage": "dev uploadNovelLoop <sourceDir> <targetDir> [N]"
+# }
+sourceDir=$1
+targetDir=$2
+N=$3
+
+if [ -z "$sourceDir" ] || [ -z "$targetDir" ]; then
+    echo "Usage: dev uploadNovelLoop <sourceDir> <targetDir> [N]"
+    exit 1
+fi
+
+if [ ! -d "$sourceDir" ]; then
+    echo "Source directory does not exist: $sourceDir"
+    exit 1
+fi
+
+if [ ! -d "$targetDir" ]; then
+    echo "Target directory does not exist: $targetDir"
+    exit 1
+fi
+
+if [ -n "$N" ] && ! [[ "$N" =~ ^[1-9][0-9]*$ ]]; then
+    echo "Error: N must be a positive integer (got: '$N')"
+    exit 1
+fi
+
+i=0
+while :; do
+    if [ -n "$N" ] && [ "$i" -ge "$N" ]; then
+        echo "Reached N=$N iterations; stopping."
+        exit 0
+    fi
+
+    oldestFile=""
+    oldestMtime=""
+    for f in "$sourceDir"/*; do
+        [ -f "$f" ] || continue
+        mtime=$(stat -f '%m' "$f")
+        if [ -z "$oldestMtime" ] || [ "$mtime" -lt "$oldestMtime" ]; then
+            oldestMtime=$mtime
+            oldestFile=$f
+        fi
+    done
+
+    if [ -z "$oldestFile" ]; then
+        echo "No files in $sourceDir; done."
+        exit 0
+    fi
+
+    i=$((i+1))
+    size=$(stat -f '%z' "$oldestFile")
+    mtimeStr=$(stat -f '%Sm' -t '%Y-%m-%d %H:%M:%S' "$oldestFile")
+    echo "===== [$i] $oldestFile (size: $size, mtime: $mtimeStr) — $(date '+%Y-%m-%d %H:%M:%S') ====="
+
+    if dev uploadNovel "$oldestFile"; then
+        mv "$oldestFile" "$targetDir/" || { echo "Move failed: $oldestFile -> $targetDir"; exit 1; }
+    else
+        echo "Upload failed for $oldestFile; aborting."
+        exit 1
+    fi
+done

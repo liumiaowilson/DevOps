@@ -1,10 +1,24 @@
 (function(cmd, context) {
+    const MAX_ATTEMPTS = 5;
+    const RETRY_DELAY_MS = 3000;
+
     const dir = context.argv[0];
 
     if(!dir) {
         cmd.error('Directory is required');
         return;
     }
+
+    const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+
+    const updateWithRetry = (record, attempt) => {
+        attempt = attempt || 1;
+        return context.mypim.update('Item__c', record).catch(err => {
+            if(attempt >= MAX_ATTEMPTS) throw err;
+            cmd.log('Save failed for ' + record.Id + ' (attempt ' + attempt + '/' + MAX_ATTEMPTS + '): ' + err.message + '; retrying in ' + RETRY_DELAY_MS + 'ms');
+            return sleep(RETRY_DELAY_MS).then(() => updateWithRetry(record, attempt + 1));
+        });
+    };
 
     return context.require('path').then(({ default: path }) => {
         const metaPath = path.join(dir, 'meta.json');
@@ -27,11 +41,13 @@
                 return;
             }
 
-            return context.mypim.update('Item__c', {
+            return updateWithRetry({
                 Id: recordId,
                 Text__c: summaryContent,
             }).then(() => {
                 cmd.logSuccess('Uploaded summary to ' + recordId);
+            }).catch(err => {
+                throw new Error('Upload failed after ' + MAX_ATTEMPTS + ' attempts: ' + err.message);
             });
         }).finally(() => context.ux.action.stop());
     });

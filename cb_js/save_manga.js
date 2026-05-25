@@ -1,0 +1,265 @@
+(function(cmd, context) {
+    const USER_AGENT = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
+    const PCLOUD_ROOT = '/MyPIM/Manga';
+    const MAX_UPLOAD_ATTEMPTS = 3;
+    const RETRY_DELAY_MS = 3000;
+
+    const galleryUrl = context.argv[0];
+    if(!galleryUrl) {
+        cmd.error('Gallery URL is required');
+        return;
+    }
+    const urlMatch = /\/g\/(\d+)\/([a-f0-9]+)/.exec(galleryUrl);
+    if(!urlMatch) {
+        cmd.error('Invalid gallery URL: ' + galleryUrl);
+        return;
+    }
+    const gid = urlMatch[1];
+    const token = urlMatch[2];
+
+    const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+    const sanitize = name => {
+        const cleaned = (name || '').replace(/[/\\:*?"<>|]/g, '_').trim();
+        return cleaned.length > 80 ? cleaned.substring(0, 80).trim() : cleaned;
+    };
+
+    const decode = s => (s || '')
+        .replace(/<[^>]+>/g, '')
+        .replace(/&nbsp;/g, ' ')
+        .replace(/&amp;/g, '&')
+        .replace(/&#039;/g, "'")
+        .replace(/&quot;/g, '"')
+        .replace(/&lt;/g, '<')
+        .replace(/&gt;/g, '>')
+        .replace(/\s+/g, ' ')
+        .trim();
+
+    const extractSuffix = url => {
+        const m = /\.([a-z0-9]+)(?:\?|$)/i.exec(url || '');
+        return (m ? m[1] : 'jpg').toLowerCase();
+    };
+
+    const ehGet = url => context.axios.get(url, {
+        headers: {
+            'User-Agent': USER_AGENT,
+            'Cookie': 'nw=1; sl=dm_2',
+        },
+        timeout: 30000,
+        // e-hentai returns 451 (with the full HTML body) for AU IPs because of the
+        // eSafety age-verification block. The body still contains the gallery markup.
+        validateStatus: status => status === 200 || status === 451,
+    });
+
+    const fetchGalleryTitle = async () => {
+        const url = 'https://e-hentai.org/g/' + gid + '/' + token + '/';
+        const resp = await ehGet(url);
+        const html = typeof resp.data === 'string' ? resp.data : '';
+        const tM = /<h1[^>]+id="gn"[^>]*>([\s\S]*?)<\/h1>/i.exec(html);
+        return decode(tM && tM[1]);
+    };
+
+    const fetchAllPageTokens = async () => {
+        const base = 'https://e-hentai.org/g/' + gid + '/' + token + '/';
+        const all = new Map();
+        let p = 0;
+        while(true) {
+            const resp = await ehGet(base + '?p=' + p);
+            const html = typeof resp.data === 'string' ? resp.data : '';
+            const gdtIdx = html.indexOf('id="gdt"');
+            if(gdtIdx === -1) break;
+            const area = html.substring(gdtIdx);
+            const re = /<a[^>]+href="https?:\/\/e-hentai\.org\/s\/([a-f0-9]+)\/(\d+)-(\d+)"/g;
+            let mm;
+            let added = 0;
+            while((mm = re.exec(area)) !== null) {
+                const n = parseInt(mm[3], 10);
+                if(all.has(n)) continue;
+                all.set(n, { pagetoken: mm[1], gid: mm[2], n });
+                added++;
+            }
+            if(added === 0) break;
+            p++;
+        }
+        return Array.from(all.values()).sort((a, b) => a.n - b.n);
+    };
+
+    const fetchPageImgSrc = async (pagetoken, n) => {
+        const url = 'https://e-hentai.org/s/' + pagetoken + '/' + gid + '-' + n;
+        const resp = await ehGet(url);
+        const html = typeof resp.data === 'string' ? resp.data : '';
+        const imgM = /<img[^>]+id="img"[^>]+src="([^"]+)"/i.exec(html);
+        return imgM ? imgM[1] : null;
+    };
+
+    const downloadImage = async url => {
+        const resp = await context.axios.get(url, {
+            responseType: 'arraybuffer',
+            headers: {
+                'User-Agent': USER_AGENT,
+                'Referer': 'https://e-hentai.org/',
+            },
+            timeout: 60000,
+        });
+        return {
+            buffer: Buffer.from(resp.data),
+            contentType: resp.headers['content-type'] || 'application/octet-stream',
+        };
+    };
+
+    const getPCloudToken = async () => {
+        const logFileName = 'pcloudtoken-' + Date.now() + '.json';
+        const apexCode = [
+            "String token = GPCloudService.doLogin('__default__');",
+            "insert new ContentVersion(Title = '" + logFileName + "', PathOnClient = '" + logFileName + "', VersionData = Blob.valueOf(JSON.serialize(token)));",
+        ].join('\n');
+
+        const exec = new context.ExecuteService(context.mypim);
+        const result = await exec.executeAnonymous({ apexCode });
+        if(!result.success) {
+            const messages = (result.diagnostic || []).map(d =>
+                result.compiled
+                    ? 'Line ' + d.lineNumber + ': ' + d.exceptionMessage
+                    : 'Line ' + d.lineNumber + ': ' + d.compileProblem
+            ).join('; ');
+            throw new Error('pCloud login failed: ' + messages);
+        }
+
+        const cvData = await context.mypim.query(
+            "SELECT Id, ContentDocumentId FROM ContentVersion WHERE Title = '" + logFileName + "' AND IsLatest = true"
+        );
+        if(!cvData.records.length) {
+            throw new Error('pCloud token ContentVersion not found');
+        }
+
+        const cvId = cvData.records[0].Id;
+        const cdId = cvData.records[0].ContentDocumentId;
+
+        try {
+            const versionData = await context.mypim.request('/sobjects/ContentVersion/' + cvId + '/VersionData');
+            const accessToken = JSON.parse(versionData);
+            if(!accessToken) {
+                throw new Error('pCloud token is empty');
+            }
+            return accessToken;
+        }
+        finally {
+            await context.mypim.sobject('ContentDocument').delete(cdId);
+        }
+    };
+
+    const pcloudCreateFolder = async (path, accessToken) => {
+        const resp = await context.axios.get('https://api.pcloud.com/createfolder', {
+            params: { access_token: accessToken, path },
+        });
+        const data = resp.data;
+        if(data && data.result === 2004) {
+            throw new Error('Manga already saved at ' + path);
+        }
+        if(!data || data.result !== 0) {
+            throw new Error((data && data.error) || ('pCloud createfolder error ' + (data && data.result)));
+        }
+        return data;
+    };
+
+    const pcloudUploadFile = async (folderPath, filename, buffer, contentType, accessToken) => {
+        const formDataMod = await context.require('form-data');
+        const FormData = formDataMod.default || formDataMod;
+
+        for(let attempt = 1; attempt <= MAX_UPLOAD_ATTEMPTS; attempt++) {
+            try {
+                const form = new FormData();
+                form.append('fileList', buffer, { filename, contentType });
+                const resp = await context.axios.post('https://api.pcloud.com/uploadfile', form, {
+                    params: {
+                        access_token: accessToken,
+                        path: folderPath.replace(/\/$/, ''),
+                        filename,
+                        renameifexists: 1,
+                    },
+                    headers: form.getHeaders(),
+                    maxContentLength: Infinity,
+                    maxBodyLength: Infinity,
+                    timeout: 120000,
+                });
+                const data = resp.data;
+                if(!data || data.result !== 0) {
+                    throw new Error((data && data.error) || ('pCloud upload error ' + (data && data.result)));
+                }
+                return data;
+            }
+            catch(err) {
+                if(attempt >= MAX_UPLOAD_ATTEMPTS) throw err;
+                cmd.log('Upload failed for ' + filename + ' (attempt ' + attempt + '/' + MAX_UPLOAD_ATTEMPTS + '): ' + err.message + '; retrying in ' + RETRY_DELAY_MS + 'ms');
+                await sleep(RETRY_DELAY_MS);
+            }
+        }
+    };
+
+    return (async () => {
+        cmd.log('Gallery: ' + gid + '/' + token);
+
+        context.ux.action.start('Fetching gallery title');
+        const title = await fetchGalleryTitle();
+        context.ux.action.stop();
+        if(!title) throw new Error('Gallery title not found — invalid URL or gallery is gone');
+        const name = sanitize(title);
+        if(!name) throw new Error('Title empty after sanitization');
+        cmd.log('Title: ' + title);
+        const folderPath = PCLOUD_ROOT + '/' + name;
+
+        context.ux.action.start('Fetching page list');
+        const pages = await fetchAllPageTokens();
+        context.ux.action.stop();
+        if(!pages.length) throw new Error('No pages found');
+        cmd.log('Found ' + pages.length + ' pages');
+
+        context.ux.action.start('Logging into pCloud');
+        const accessToken = await getPCloudToken();
+        context.ux.action.stop();
+
+        cmd.log('Creating folder ' + folderPath);
+        await pcloudCreateFolder(folderPath, accessToken);
+
+        const padWidth = String(pages.length).length;
+        const completed = [];
+        for(let i = 0; i < pages.length; i++) {
+            const p = pages[i];
+            const padded = String(i + 1).padStart(padWidth, '0');
+            context.ux.action.start('Page ' + (i + 1) + '/' + pages.length);
+            const imgSrc = await fetchPageImgSrc(p.pagetoken, p.n);
+            if(!imgSrc) throw new Error('No image src found for page ' + (i + 1));
+            const { buffer, contentType } = await downloadImage(imgSrc);
+            const filename = padded + '.' + extractSuffix(imgSrc);
+            await pcloudUploadFile(folderPath, filename, buffer, contentType, accessToken);
+            completed.push({ itemName: padded, itemPath: folderPath + '/' + filename });
+            context.ux.action.stop();
+        }
+
+        context.ux.action.start('Creating Manga record');
+        const parent = await context.mypim.sobject('Item__c').create({
+            Name: name,
+            Type__c: 'Manga',
+        });
+        const parentId = parent.id || parent.Id;
+        if(!parentId) throw new Error('Failed to create Manga record');
+        context.ux.action.stop();
+
+        context.ux.action.start('Creating ' + completed.length + ' MangaItem children');
+        for(let i = 0; i < completed.length; i += 200) {
+            const batch = completed.slice(i, i + 200).map(c => ({
+                Name: c.itemName,
+                Type__c: 'MangaItem',
+                Parent__c: parentId,
+                File_1__c: c.itemPath,
+            }));
+            await context.mypim.sobject('Item__c').create(batch);
+        }
+        context.ux.action.stop();
+
+        cmd.logSuccess('Saved "' + name + '" — pCloud ' + folderPath + ', parent ' + parentId + ', ' + completed.length + ' pages');
+    })().catch(err => {
+        context.ux.action.stop();
+        cmd.error(err.message || String(err));
+    });
+})

@@ -1,0 +1,8 @@
+# {
+#   "name": "describeMovieLoop",
+#   "description": "Repeatedly describe the next unprocessed Movie Item__c (Show_In_UI__c = false): summarize Text__c via describe-movie.py, save the narrative to Description__c, and mark Show_In_UI__c = true, until none remain",
+#   "usage": "dev describeMovieLoop [alias]"
+# }
+alias=${1:-$DefaultAlias}
+
+sf mypim run script -o $alias -f ~/DevOps/cb_js/describeMovieLoop.js

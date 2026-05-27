@@ -1,0 +1,33 @@
+# {
+#   "name": "save_manga_all",
+#   "description": "Read a file of e-hentai gallery URLs (one per line) and run save_manga for each",
+#   "usage": "dev save_manga_all <filePath>"
+# }
+filePath=$1
+
+if [ -z "$filePath" ]; then
+    echo 'File path is required'
+    exit 1
+fi
+
+if [ ! -f "$filePath" ]; then
+    echo "File not found: $filePath"
+    exit 1
+fi
+
+# Count non-empty lines for progress reporting
+total=$(grep -cve '^[[:space:]]*$' "$filePath")
+current=0
+
+while IFS= read -r url || [ -n "$url" ]; do
+    # Skip blank lines
+    [ -z "${url// }" ] && continue
+    current=$((current + 1))
+    echo ""
+    echo "[$current/$total] Saving: $url"
+    dev save_manga "$url"
+    echo "[$current/$total] Done: $url"
+done < "$filePath"
+
+echo ""
+echo "Finished. Processed $current of $total URL(s)."

@@ -5,6 +5,16 @@
     const MAX_DOWNLOAD_ATTEMPTS = 3;
     const RETRY_DELAY_MS = 3000;
 
+    // Shared e-hentai request headers, reused by both the local axios path and the
+    // remote compute-automation path so the two modes hit e-hentai identically.
+    const EH_HEADERS = { 'User-Agent': USER_AGENT, 'Cookie': 'nw=1; sl=dm_2' };
+    const IMG_HEADERS = { 'User-Agent': USER_AGENT, 'Referer': 'https://e-hentai.org/' };
+
+    // 'remote' as the second script arg routes e-hentai requests through the compute
+    // /automation endpoint (which runs from a non-geo-blocked location), mirroring how
+    // the mypimEHentaiBrowser LWC fetches e-hentai. pCloud calls always stay local.
+    const REMOTE = context.argv[1] === 'remote';
+
     const galleryUrl = context.argv[0];
     if(!galleryUrl) {
         cmd.error('Gallery URL is required');
@@ -43,21 +53,91 @@
         return (m ? m[1] : 'jpg').toLowerCase();
     };
 
-    const ehGet = url => context.axios.get(url, {
-        headers: {
-            'User-Agent': USER_AGENT,
-            'Cookie': 'nw=1; sl=dm_2',
-        },
+    // Compute config (/Compute/BaseUrl, /Compute/Token) lives in Config_Item__c, the
+    // same store ConfigManager reads server-side. Queried lazily and cached so a
+    // fully-local run never touches it.
+    let _computeConfig = null;
+    const getComputeConfig = async () => {
+        if(_computeConfig) return _computeConfig;
+        const r = await context.mypim.query(
+            "SELECT Path__c, Value__c FROM Config_Item__c WHERE Path__c IN ('/Compute/BaseUrl', '/Compute/Token')"
+        );
+        const m = {};
+        for(const rec of r.records) m[rec.Path__c] = rec.Value__c;
+        if(!m['/Compute/BaseUrl'] || !m['/Compute/Token']) {
+            throw new Error('Compute config missing: /Compute/BaseUrl and /Compute/Token must exist in Config_Item__c');
+        }
+        _computeConfig = { baseUrl: m['/Compute/BaseUrl'].replace(/\/$/, ''), token: m['/Compute/Token'] };
+        return _computeConfig;
+    };
+
+    // POST {token, data, code} to {baseUrl}/automation, where the remote VM runs `code`
+    // (with axios + $data available) and returns a {success, result|message} envelope —
+    // the same shape GComputeService.runComputeScript / the LWC's runAutomation use.
+    const runAutomation = async (code, data) => {
+        const { baseUrl, token } = await getComputeConfig();
+        const resp = await context.axios.post(baseUrl + '/automation', {
+            token,
+            data: JSON.stringify(data),
+            code,
+        }, {
+            headers: { 'Content-Type': 'application/json' },
+            timeout: 120000,
+        });
+        const envelope = typeof resp.data === 'string' ? JSON.parse(resp.data) : resp.data;
+        if(!envelope || envelope.success === false) {
+            throw new Error((envelope && envelope.message) || 'runComputeAutomation failed');
+        }
+        return envelope.result;
+    };
+
+    // Remote GET for HTML pages — returns the response body as a string. Parsing of that
+    // HTML still happens locally in node, so only the network hop is offloaded.
+    const REMOTE_GET_SCRIPT = `
+const axios = require('axios');
+(function() {
+    return axios.get($data.url, {
+        headers: $data.headers,
         timeout: 30000,
-        // e-hentai returns 451 (with the full HTML body) for AU IPs because of the
-        // eSafety age-verification block. The body still contains the gallery markup.
         validateStatus: status => status === 200 || status === 451,
-    });
+    }).then(resp => (typeof resp.data === 'string' ? resp.data : ''));
+})()
+`;
+
+    // Remote GET for image bytes — base64-encodes the buffer to cross the JSON envelope.
+    const REMOTE_IMAGE_SCRIPT = `
+const axios = require('axios');
+(function() {
+    return axios.get($data.url, {
+        responseType: 'arraybuffer',
+        headers: $data.headers,
+        timeout: 60000,
+    }).then(resp => ({
+        data: Buffer.from(resp.data).toString('base64'),
+        contentType: resp.headers['content-type'] || 'application/octet-stream',
+    }));
+})()
+`;
+
+    // Fetch an e-hentai HTML page, returning the body string. Local axios by default;
+    // remote compute automation when invoked with the 'remote' parameter.
+    const ehGetHtml = async url => {
+        if(REMOTE) {
+            return runAutomation(REMOTE_GET_SCRIPT, { url, headers: EH_HEADERS });
+        }
+        const resp = await context.axios.get(url, {
+            headers: EH_HEADERS,
+            timeout: 30000,
+            // e-hentai returns 451 (with the full HTML body) for AU IPs because of the
+            // eSafety age-verification block. The body still contains the gallery markup.
+            validateStatus: status => status === 200 || status === 451,
+        });
+        return typeof resp.data === 'string' ? resp.data : '';
+    };
 
     const fetchGalleryTitle = async () => {
         const url = 'https://e-hentai.org/g/' + gid + '/' + token + '/';
-        const resp = await ehGet(url);
-        const html = typeof resp.data === 'string' ? resp.data : '';
+        const html = await ehGetHtml(url);
         const tM = /<h1[^>]+id="gn"[^>]*>([\s\S]*?)<\/h1>/i.exec(html);
         return decode(tM && tM[1]);
     };
@@ -67,8 +147,7 @@
         const all = new Map();
         let p = 0;
         while(true) {
-            const resp = await ehGet(base + '?p=' + p);
-            const html = typeof resp.data === 'string' ? resp.data : '';
+            const html = await ehGetHtml(base + '?p=' + p);
             const gdtIdx = html.indexOf('id="gdt"');
             if(gdtIdx === -1) break;
             const area = html.substring(gdtIdx);
@@ -89,19 +168,22 @@
 
     const fetchPageImgSrc = async (pagetoken, n) => {
         const url = 'https://e-hentai.org/s/' + pagetoken + '/' + gid + '-' + n;
-        const resp = await ehGet(url);
-        const html = typeof resp.data === 'string' ? resp.data : '';
+        const html = await ehGetHtml(url);
         const imgM = /<img[^>]+id="img"[^>]+src="([^"]+)"/i.exec(html);
         return imgM ? imgM[1] : null;
     };
 
     const downloadImage = async url => {
+        if(REMOTE) {
+            const result = await runAutomation(REMOTE_IMAGE_SCRIPT, { url, headers: IMG_HEADERS });
+            return {
+                buffer: Buffer.from(result.data, 'base64'),
+                contentType: result.contentType || 'application/octet-stream',
+            };
+        }
         const resp = await context.axios.get(url, {
             responseType: 'arraybuffer',
-            headers: {
-                'User-Agent': USER_AGENT,
-                'Referer': 'https://e-hentai.org/',
-            },
+            headers: IMG_HEADERS,
             timeout: 60000,
         });
         return {
@@ -293,6 +375,10 @@
         cmd.logSuccess('Saved "' + name + '" — pCloud ' + folderPath + ', parent ' + parentId + ', ' + completed.length + ' pages');
     })().catch(err => {
         context.ux.action.stop();
-        cmd.error(err.message || String(err));
+        let msg = err.message || String(err);
+        if(!REMOTE) {
+            msg += '\n(If e-hentai is unreachable/geo-blocked, re-run with the "remote" parameter to route e-hentai requests through compute automation.)';
+        }
+        cmd.error(msg);
     });
 })

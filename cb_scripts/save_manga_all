@@ -1,9 +1,10 @@
 # {
 #   "name": "save_manga_all",
-#   "description": "Read a file of e-hentai gallery URLs (one per line) and run save_manga for each",
-#   "usage": "dev save_manga_all <filePath>"
+#   "description": "Read a file of e-hentai gallery URLs (one per line) and run save_manga for each. Pass 'remote' to route e-hentai requests through compute automation",
+#   "usage": "dev save_manga_all <filePath> [remote]"
 # }
 filePath=$1
+mode=$2                         # optional: forwarded to each save_manga call
 
 if [ -z "$filePath" ]; then
     echo 'File path is required'
@@ -25,7 +26,7 @@ while IFS= read -r url || [ -n "$url" ]; do
     current=$((current + 1))
     echo ""
     echo "[$current/$total] Saving: $url"
-    if ! dev save_manga "$url"; then
+    if ! dev save_manga "$url" "$mode"; then
         echo "[$current/$total] Failed: $url"
         echo "Aborting — save_manga errored out."
         exit 1

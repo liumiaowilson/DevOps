@@ -1,14 +1,15 @@
 # {
 #   "name": "save_manga",
-#   "description": "Download an e-hentai gallery to pCloud and create Manga Item__c records",
-#   "usage": "dev save_manga <galleryUrl> [alias]"
+#   "description": "Download an e-hentai gallery to pCloud and create Manga Item__c records. Pass 'remote' to route e-hentai requests through compute automation",
+#   "usage": "dev save_manga <galleryUrl> [remote] [alias]"
 # }
 galleryUrl=$1
-alias=${2:-$DefaultAlias}
+mode=$2                         # optional: 'remote' to use compute automation for e-hentai requests
+alias=${3:-$DefaultAlias}
 
 if [ -z "$galleryUrl" ]; then
     echo 'Gallery URL is required'
     exit 1
 fi
 
-sf mypim run script -o $alias -f ~/DevOps/cb_js/save_manga.js "$galleryUrl"
+sf mypim run script -o "$alias" -f ~/DevOps/cb_js/save_manga.js "$galleryUrl" "$mode"

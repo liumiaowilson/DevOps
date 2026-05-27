@@ -53,38 +53,18 @@
         return (m ? m[1] : 'jpg').toLowerCase();
     };
 
-    // Compute config (/Compute/BaseUrl, /Compute/Token) lives in Config_Item__c, the
-    // same store ConfigManager reads server-side. Queried lazily and cached so a
-    // fully-local run never touches it.
-    let _computeConfig = null;
-    const getComputeConfig = async () => {
-        if(_computeConfig) return _computeConfig;
-        const r = await context.mypim.query(
-            "SELECT Path__c, Value__c FROM Config_Item__c WHERE Path__c IN ('/Compute/BaseUrl', '/Compute/Token')"
-        );
-        const m = {};
-        for(const rec of r.records) m[rec.Path__c] = rec.Value__c;
-        if(!m['/Compute/BaseUrl'] || !m['/Compute/Token']) {
-            throw new Error('Compute config missing: /Compute/BaseUrl and /Compute/Token must exist in Config_Item__c');
-        }
-        _computeConfig = { baseUrl: m['/Compute/BaseUrl'].replace(/\/$/, ''), token: m['/Compute/Token'] };
-        return _computeConfig;
-    };
-
-    // POST {token, data, code} to {baseUrl}/automation, where the remote VM runs `code`
-    // (with axios + $data available) and returns a {success, result|message} envelope —
-    // the same shape GComputeService.runComputeScript / the LWC's runAutomation use.
+    // Run an automation script server-side via the org's /computeAutomation REST resource
+    // (ComputeAutomationRestService -> GComputeService.runComputeScript). The compute HTTP
+    // callout then originates from Salesforce, not this machine, so it works even where the
+    // local network blocks egress to the compute server. doPost returns the serialized
+    // {success, result|message} envelope (Apex REST wraps the String body, so it arrives
+    // here as a JSON string). Returns the `result` payload.
     const runAutomation = async (code, data) => {
-        const { baseUrl, token } = await getComputeConfig();
-        const resp = await context.axios.post(baseUrl + '/automation', {
-            token,
-            data: JSON.stringify(data),
+        const raw = await context.mypim.apex.post('/computeAutomation', {
             code,
-        }, {
-            headers: { 'Content-Type': 'application/json' },
-            timeout: 120000,
+            data: JSON.stringify(data),
         });
-        const envelope = typeof resp.data === 'string' ? JSON.parse(resp.data) : resp.data;
+        const envelope = typeof raw === 'string' ? JSON.parse(raw) : raw;
         if(!envelope || envelope.success === false) {
             throw new Error((envelope && envelope.message) || 'runComputeAutomation failed');
         }

@@ -20,7 +20,7 @@
 
     const sleep = ms => new Promise(r => setTimeout(r, ms));
 
-    const sanitize = name => (name || '').replace(/[/\\:*?"<>|]/g, '_').replace(/\s+/g, '').trim();
+    const sanitize = name => (name || '').replace(/[/\\:*?"<>|]/g, '_').replace(/[\s#]+/g, '_').trim();
 
     // Item__c.Name is the standard Name field, capped at 80 chars by Salesforce.
     // pCloud folder names and File_1__c paths have no such limit, so truncation

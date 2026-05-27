@@ -20,10 +20,12 @@
 
     const sleep = ms => new Promise(r => setTimeout(r, ms));
 
-    const sanitize = name => {
-        const cleaned = (name || '').replace(/[/\\:*?"<>|]/g, '_').trim();
-        return cleaned.length > 80 ? cleaned.substring(0, 80).trim() : cleaned;
-    };
+    const sanitize = name => (name || '').replace(/[/\\:*?"<>|]/g, '_').trim();
+
+    // Item__c.Name is the standard Name field, capped at 80 chars by Salesforce.
+    // pCloud folder names and File_1__c paths have no such limit, so truncation
+    // is applied ONLY when persisting to the parent Manga record's Name.
+    const truncateForRecordName = name => name.length > 80 ? name.substring(0, 80).trim() : name;
 
     const decode = s => (s || '')
         .replace(/<[^>]+>/g, '')
@@ -266,7 +268,7 @@
 
         context.ux.action.start('Creating Manga record');
         const parent = await context.mypim.sobject('Item__c').create({
-            Name: name,
+            Name: truncateForRecordName(name),
             Type__c: 'Manga',
         });
         const parentId = parent.id || parent.Id;

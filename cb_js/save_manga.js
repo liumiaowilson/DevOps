@@ -2,6 +2,7 @@
     const USER_AGENT = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
     const PCLOUD_ROOT = '/MyPIM/Manga';
     const MAX_UPLOAD_ATTEMPTS = 3;
+    const MAX_DOWNLOAD_ATTEMPTS = 3;
     const RETRY_DELAY_MS = 3000;
 
     const galleryUrl = context.argv[0];
@@ -226,17 +227,41 @@
 
         const padWidth = String(pages.length).length;
         const completed = [];
+        const skipped = [];
         for(let i = 0; i < pages.length; i++) {
             const p = pages[i];
             const padded = String(i + 1).padStart(padWidth, '0');
             context.ux.action.start('Page ' + (i + 1) + '/' + pages.length);
-            const imgSrc = await fetchPageImgSrc(p.pagetoken, p.n);
-            if(!imgSrc) throw new Error('No image src found for page ' + (i + 1));
-            const { buffer, contentType } = await downloadImage(imgSrc);
-            const filename = padded + '.' + extractSuffix(imgSrc);
-            await pcloudUploadFile(folderPath, filename, buffer, contentType, accessToken);
+
+            let download = null;
+            for(let attempt = 1; attempt <= MAX_DOWNLOAD_ATTEMPTS; attempt++) {
+                try {
+                    const imgSrc = await fetchPageImgSrc(p.pagetoken, p.n);
+                    if(!imgSrc) throw new Error('No image src found');
+                    const { buffer, contentType } = await downloadImage(imgSrc);
+                    download = { buffer, contentType, suffix: extractSuffix(imgSrc) };
+                    break;
+                }
+                catch(err) {
+                    if(attempt >= MAX_DOWNLOAD_ATTEMPTS) {
+                        context.ux.action.stop('skipped');
+                        cmd.warn('Download failed for page ' + (i + 1) + ' after ' + MAX_DOWNLOAD_ATTEMPTS + ' attempts: ' + err.message + '; skipping');
+                        skipped.push(i + 1);
+                        break;
+                    }
+                    cmd.log('Download failed for page ' + (i + 1) + ' (attempt ' + attempt + '/' + MAX_DOWNLOAD_ATTEMPTS + '): ' + err.message + '; retrying in ' + RETRY_DELAY_MS + 'ms');
+                    await sleep(RETRY_DELAY_MS);
+                }
+            }
+            if(!download) continue;
+
+            const filename = padded + '.' + download.suffix;
+            await pcloudUploadFile(folderPath, filename, download.buffer, download.contentType, accessToken);
             completed.push({ itemName: padded, itemPath: folderPath + '/' + filename });
             context.ux.action.stop();
+        }
+        if(skipped.length) {
+            cmd.warn('Skipped ' + skipped.length + ' page(s) that failed to download: ' + skipped.join(', '));
         }
 
         context.ux.action.start('Creating Manga record');

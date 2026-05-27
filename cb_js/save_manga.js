@@ -258,8 +258,11 @@
             if(!download) continue;
 
             const filename = padded + '.' + download.suffix;
-            await pcloudUploadFile(folderPath, filename, download.buffer, download.contentType, accessToken);
-            completed.push({ itemName: padded, itemPath: folderPath + '/' + filename });
+            const uploadData = await pcloudUploadFile(folderPath, filename, download.buffer, download.contentType, accessToken);
+            const uploaded = uploadData && uploadData.metadata && uploadData.metadata[0];
+            if(!uploaded) throw new Error('pCloud upload returned no metadata for page ' + (i + 1));
+            const itemPath = uploaded.path || (folderPath + '/' + uploaded.name);
+            completed.push({ itemName: padded, itemPath });
             context.ux.action.stop();
         }
         if(skipped.length) {

@@ -154,7 +154,7 @@
         });
         const data = resp.data;
         if(data && data.result === 2004) {
-            throw new Error('Manga already saved at ' + path);
+            return { exists: true };
         }
         if(!data || data.result !== 0) {
             throw new Error((data && data.error) || ('pCloud createfolder error ' + (data && data.result)));
@@ -175,7 +175,7 @@
                         access_token: accessToken,
                         path: folderPath.replace(/\/$/, ''),
                         filename,
-                        renameifexists: 1,
+                        renameifexists: 0,
                     },
                     headers: form.getHeaders(),
                     maxContentLength: Infinity,
@@ -219,7 +219,10 @@
         context.ux.action.stop();
 
         cmd.log('Creating folder ' + folderPath);
-        await pcloudCreateFolder(folderPath, accessToken);
+        const folderResult = await pcloudCreateFolder(folderPath, accessToken);
+        if(folderResult && folderResult.exists) {
+            cmd.warn('Manga folder already exists at ' + folderPath + ' — continuing');
+        }
 
         const padWidth = String(pages.length).length;
         const completed = [];

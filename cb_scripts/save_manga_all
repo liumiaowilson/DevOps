@@ -25,7 +25,11 @@ while IFS= read -r url || [ -n "$url" ]; do
     current=$((current + 1))
     echo ""
     echo "[$current/$total] Saving: $url"
-    dev save_manga "$url"
+    if ! dev save_manga "$url"; then
+        echo "[$current/$total] Failed: $url"
+        echo "Aborting — save_manga errored out."
+        exit 1
+    fi
     echo "[$current/$total] Done: $url"
 done < "$filePath"
 

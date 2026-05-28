@@ -10,6 +10,20 @@
 
         const scriptPath = path.join(os.homedir(), 'mypim-codebuilder', 'scripts', 'describe-movie.py');
 
+        // The python describe step idles the Salesforce keep-alive socket for minutes,
+        // so post-spawn calls can land on a half-closed connection. Retry once on hangup.
+        const isHangup = err => {
+            if(!err) return false;
+            if(err.code === 'ECONNRESET' || err.code === 'EPIPE') return true;
+            const msg = ((err.message || '') + '').toLowerCase();
+            return msg.includes('socket hang up') || msg.includes('econnreset');
+        };
+        const retryOnHangup = fn => Promise.resolve().then(fn).catch(err => {
+            if(!isHangup(err)) throw err;
+            cmd.log('Connection dropped (' + (err.code || err.message) + '), retrying...');
+            return fn();
+        });
+
         let described = 0;
         let skipped = 0;
 
@@ -35,10 +49,10 @@
                 // No frame descriptions to summarize. Mark processed so the loop advances.
                 if(!item.Text__c || !item.Text__c.trim()) {
                     cmd.warn('Text__c is empty; marking Show_In_UI__c = true and skipping.');
-                    return context.mypim.update('Item__c', {
+                    return retryOnHangup(() => context.mypim.update('Item__c', {
                         Id: item.Id,
                         Show_In_UI__c: true,
-                    }).then(() => {
+                    })).then(() => {
                         skipped++;
                         return loop();
                     });
@@ -62,11 +76,11 @@
                 }
 
                 context.ux.action.start('Saving description to ' + item.Id);
-                return context.mypim.update('Item__c', {
+                return retryOnHangup(() => context.mypim.update('Item__c', {
                     Id: item.Id,
                     Description__c: description,
                     Show_In_UI__c: true,
-                }).then(() => {
+                })).then(() => {
                     context.ux.action.stop();
                     described++;
                     cmd.logSuccess('Saved Description__c (' + description.length + ' chars) and set Show_In_UI__c = true on ' + item.Id);

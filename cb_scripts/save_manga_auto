@@ -1,0 +1,13 @@
+# {
+#   "name": "save_manga_auto",
+#   "description": "Export the EHentai Job Manager queue to ~/Downloads/ehentai_urls.txt, clear the queue (same as Delete All), then run save_manga_all over the file. Pass 'remote' to route e-hentai requests through compute automation",
+#   "usage": "dev save_manga_auto [remote]"
+# }
+alias=${DefaultAlias}
+outFile="$HOME/Downloads/ehentai_urls.txt"
+
+# Export queued URLs to $outFile and clear the org-side queue (aborts if empty)
+sf mypim run script -o "$alias" -f ~/DevOps/cb_js/save_manga_auto.js "$outFile" || exit 1
+
+# Download/save every exported gallery, forwarding all params (e.g. remote) through
+dev save_manga_all "$outFile" "$@"

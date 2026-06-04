@@ -1,0 +1,56 @@
+# {
+#   "name": "deployMyPIM",
+#   "description": "Copy git changed files under ~/mypim/src into ~/mypim/build, then deploy the build directory",
+#   "usage": "dev deployMyPIM"
+# }
+srcDir=~/mypim/src
+buildDir=~/mypim/build
+
+cd ~/mypim
+
+files=`git status -s -uall -- src | grep -v '^.D' | grep -v '^D' | awk '{print $NF}'`
+
+if [ -z "$files" ]; then
+    echo 'No git changed files under src'
+    exit 0
+fi
+
+staged=""
+
+for f in $files; do
+    rel=${f#src/}
+
+    case $rel in
+        lwc/*/* | aura/*/*)
+            bundleType=`echo $rel | cut -d/ -f1`
+            bundleName=`echo $rel | cut -d/ -f2`
+            bundle=$bundleType/$bundleName
+
+            case " $staged " in
+                *" $bundle "*) continue ;;
+            esac
+            staged="$staged $bundle"
+
+            mkdir -p $buildDir/$bundleType
+            cp -R $srcDir/$bundle $buildDir/$bundleType/
+            echo "Staged $bundle"
+            ;;
+        *)
+            mkdir -p $buildDir/`dirname $rel`
+            cp $srcDir/$rel $buildDir/$rel
+            echo "Staged $rel"
+
+            if [ -f $srcDir/$rel-meta.xml ]; then
+                cp $srcDir/$rel-meta.xml $buildDir/$rel-meta.xml
+            fi
+
+            base=${rel%-meta.xml}
+            if [ "$base" != "$rel" ] && [ -f $srcDir/$base ]; then
+                cp $srcDir/$base $buildDir/$base
+            fi
+            ;;
+    esac
+done
+
+cd $buildDir
+dev deploy .

@@ -5,4 +5,10 @@
 # }
 
 source ~/.bashrc.local
-myclaude --dangerously-skip-permissions --verbose --output-format stream-json -p "/quick-commit $*" | jq -r 'select(.type == "assistant") | .message.content[] | select(.type == "text") | .text'
+
+guidance="$*"
+if [ -z "$guidance" ] && [ -f git_init.sh ]; then
+  guidance="use a simple summary as the commit message"
+fi
+
+myclaude --dangerously-skip-permissions --verbose --output-format stream-json -p "/quick-commit $guidance" | jq -r 'select(.type == "assistant") | .message.content[] | select(.type == "text") | .text'

@@ -7,8 +7,16 @@
 source ~/.bashrc.local
 
 guidance="$*"
-if [ -z "$guidance" ] && [ -f git_init.sh ]; then
-  guidance="use a simple summary as the commit message"
+if [ -z "$guidance" ]; then
+  dir="$PWD"
+  while true; do
+    if [ -f "$dir/git_init.sh" ]; then
+      guidance="use a simple summary as the commit message"
+      break
+    fi
+    [ "$dir" = "/" ] && break
+    dir="$(dirname "$dir")"
+  done
 fi
 
 myclaude --dangerously-skip-permissions --verbose --output-format stream-json -p "/quick-commit $guidance" | jq -r 'select(.type == "assistant") | .message.content[] | select(.type == "text") | .text'

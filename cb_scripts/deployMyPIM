@@ -11,8 +11,7 @@ cd ~/mypim
 files=`git status -s -uall -- src | grep -v '^.D' | grep -v '^D' | awk '{print $NF}'`
 
 if [ -z "$files" ]; then
-    echo 'No git changed files under src'
-    exit 0
+    echo 'No git changed files under src, deploying build directory as-is'
 fi
 
 staged=""
@@ -54,3 +53,30 @@ done
 
 cd $buildDir
 dev deploy .
+
+if [ $? -ne 0 ]; then
+    echo 'Deploy failed, skipping build cleanup'
+    exit 1
+fi
+
+echo 'Cleaning build directory'
+
+for dir in $buildDir/*/; do
+    dirName=`basename $dir`
+
+    for entry in $dir*; do
+        [ -e "$entry" ] || continue
+        name=`basename $entry`
+
+        if [ "$dirName" = "lwc" ]; then
+            case $name in
+                mypimItemTypes | mypimEventSeedEngine | mypimRecordSearchPanel)
+                    continue
+                    ;;
+            esac
+        fi
+
+        rm -rf "$entry"
+        echo "Removed $dirName/$name"
+    done
+done

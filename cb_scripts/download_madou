@@ -11,6 +11,26 @@ if [ -z "$url" ]; then
 fi
 
 UA="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+
+# Run ffmpeg with a live "percent + ETA" line. Args: total duration in seconds, then ffmpeg args.
+ffmpeg_progress() {
+    local total=$1; shift
+    ffmpeg -y -loglevel warning -nostats -progress pipe:1 "$@" |
+    awk -F'=' -v total="$total" '
+        $1 == "out_time_us" { cur = $2 / 1000000 }
+        $1 == "speed" {
+            spd = $2 + 0
+            pct = total > 0 ? cur / total * 100 : 0
+            if (pct > 100) pct = 100
+            eta = (spd > 0 && total > cur) ? (total - cur) / spd : 0
+            printf "\r  %5.1f%%  ETA %02d:%02d  (%sx) ", pct, eta / 60, eta % 60, spd
+            fflush()
+        }
+        $1 == "progress" && $2 == "end" { printf "\r  100.0%%  ETA 00:00            " }
+        END { printf "\n" }
+    '
+    return ${PIPESTATUS[0]}
+}
 BASE="https://dash.madou.club"
 OUTDIR="$HOME/Downloads/madou"
 mkdir -p "$OUTDIR"
@@ -60,10 +80,14 @@ sed -E "s#^([^#].*\.ts.*)\$#${segBase}/\1#" "$tmpdir/orig.m3u8" > "$tmpdir/play.
 segments=$(grep -cE '\.ts' "$tmpdir/play.m3u8")
 echo "Segments: $segments"
 
-# 5. Download + decrypt + mux (lossless copy) — ffmpeg prints live progress
+# Total duration from the playlist's per-segment EXTINF tags -> drives the progress %
+duration=$(awk -F'[:,]' '/^#EXTINF/ {s += $2} END {printf "%.2f", s}' "$tmpdir/play.m3u8")
+echo "Duration: ${duration}s"
+
+# 5. Download + decrypt + mux (lossless copy)
 tmp720="$tmpdir/raw.mp4"
 echo "Downloading and decrypting..."
-ffmpeg -y -loglevel warning -stats \
+ffmpeg_progress "$duration" \
     -allowed_extensions ALL \
     -protocol_whitelist file,http,https,tcp,tls,crypto \
     -i "$tmpdir/play.m3u8" \
@@ -77,7 +101,8 @@ fi
 # 6. Downscale to 480p -> final file named after the movie
 out="$OUTDIR/${movie}.mp4"
 echo "Downscaling to 480p -> $out"
-ffmpeg -y -loglevel warning -stats \
+rawDuration=$(ffprobe -v error -show_entries format=duration -of csv=p=0 "$tmp720")
+ffmpeg_progress "${rawDuration:-$duration}" \
     -i "$tmp720" \
     -vf scale=-2:480 -c:v libx264 -crf 23 -preset veryfast \
     -c:a aac -b:a 128k \

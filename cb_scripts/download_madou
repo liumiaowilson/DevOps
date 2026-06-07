@@ -1,0 +1,90 @@
+# {
+#   "name": "download_madou",
+#   "description": "Download a madou.club video by page URL, decrypt the HLS (AES-128) stream, and downscale to 480p",
+#   "usage": "dev download_madou <https://madou.club/<name>.html>"
+# }
+url=$1
+
+if [ -z "$url" ]; then
+    echo 'Page URL is required (e.g. https://madou.club/<name>.html)'
+    exit 0
+fi
+
+UA="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+BASE="https://dash.madou.club"
+OUTDIR="$HOME/Downloads/madou"
+mkdir -p "$OUTDIR"
+
+# 1. Movie name from the URL slug (percent-decoded), sanitized for the filesystem
+slug=$(basename "$url" .html)
+movie=$(printf '%b' "${slug//%/\\x}")
+movie=${movie//\//-}
+echo "Movie:    $movie"
+
+# 2. Fetch the page and find the player iframe -> video id
+page=$(curl -s -A "$UA" "$url")
+shareUrl=$(printf '%s' "$page" | grep -oE 'https?://dash\.madou\.club/share/[a-f0-9]+' | head -1)
+if [ -z "$shareUrl" ]; then
+    sharePath=$(printf '%s' "$page" | grep -oE 'dash\.madou\.club/share/[a-f0-9]+' | head -1)
+    [ -n "$sharePath" ] && shareUrl="https://$sharePath"
+fi
+if [ -z "$shareUrl" ]; then
+    echo 'Could not find the video iframe on the page'
+    exit 1
+fi
+videoId=$(basename "$shareUrl")
+echo "Video ID: $videoId"
+
+# 3. Fetch the share page -> fresh token (lives ~100s) + m3u8 path
+share=$(curl -s -A "$UA" "$shareUrl")
+token=$(printf '%s' "$share" | grep -oE 'var token = "[^"]*"' | sed -E 's/var token = "([^"]*)"/\1/')
+m3u8path=$(printf '%s' "$share" | grep -oE "var m3u8 = '[^']+'" | sed -E "s/var m3u8 = '([^']+)'/\1/")
+if [ -z "$m3u8path" ]; then
+    echo 'Could not find the m3u8 path on the share page'
+    exit 1
+fi
+playlistUrl="${BASE}${m3u8path}"
+[ -n "$token" ] && playlistUrl="${playlistUrl}?token=${token}"
+
+# 4. Fetch the playlist while the token is valid, then rewrite relative
+#    segment names to absolute URLs (key + segments are public, no token needed)
+tmpdir=$(mktemp -d)
+trap 'rm -rf "$tmpdir"' EXIT
+segBase="${BASE}/videos/${videoId}"
+httpCode=$(curl -s -A "$UA" -e "$shareUrl" "$playlistUrl" -o "$tmpdir/orig.m3u8" -w '%{http_code}')
+if [ "$httpCode" != "200" ]; then
+    echo "Failed to fetch playlist (HTTP $httpCode): $(cat "$tmpdir/orig.m3u8")"
+    exit 1
+fi
+sed -E "s#^([^#].*\.ts.*)\$#${segBase}/\1#" "$tmpdir/orig.m3u8" > "$tmpdir/play.m3u8"
+segments=$(grep -cE '\.ts' "$tmpdir/play.m3u8")
+echo "Segments: $segments"
+
+# 5. Download + decrypt + mux (lossless copy) — ffmpeg prints live progress
+tmp720="$tmpdir/raw.mp4"
+echo "Downloading and decrypting..."
+ffmpeg -y -loglevel warning -stats \
+    -allowed_extensions ALL \
+    -protocol_whitelist file,http,https,tcp,tls,crypto \
+    -i "$tmpdir/play.m3u8" \
+    -c copy -bsf:a aac_adtstoasc \
+    "$tmp720"
+if [ $? -ne 0 ] || [ ! -f "$tmp720" ]; then
+    echo 'Download failed'
+    exit 1
+fi
+
+# 6. Downscale to 480p -> final file named after the movie
+out="$OUTDIR/${movie}.mp4"
+echo "Downscaling to 480p -> $out"
+ffmpeg -y -loglevel warning -stats \
+    -i "$tmp720" \
+    -vf scale=-2:480 -c:v libx264 -crf 23 -preset veryfast \
+    -c:a aac -b:a 128k \
+    "$out"
+if [ $? -ne 0 ] || [ ! -f "$out" ]; then
+    echo 'Downscale failed'
+    exit 1
+fi
+
+echo "Done: $out"

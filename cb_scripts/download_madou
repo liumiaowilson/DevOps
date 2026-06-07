@@ -33,7 +33,7 @@ ffmpeg_progress() {
 }
 BASE="https://dash.madou.club"
 OUTDIR="$HOME/Downloads/madou"
-mkdir -p "$OUTDIR"
+mkdir -p "$OUTDIR/playlists" "$OUTDIR/movies"
 
 # 1. Movie name from the URL slug (percent-decoded), sanitized for the filesystem
 slug=$(basename "$url" .html)
@@ -77,6 +77,9 @@ if [ "$httpCode" != "200" ]; then
     exit 1
 fi
 sed -E "s#^([^#].*\.ts.*)\$#${segBase}/\1#" "$tmpdir/orig.m3u8" > "$tmpdir/play.m3u8"
+playlist="$OUTDIR/playlists/${movie}.m3u8"
+cp "$tmpdir/play.m3u8" "$playlist"
+echo "Playlist: $playlist"
 segments=$(grep -cE '\.ts' "$tmpdir/play.m3u8")
 echo "Segments: $segments"
 
@@ -99,7 +102,7 @@ if [ $? -ne 0 ] || [ ! -f "$tmp720" ]; then
 fi
 
 # 6. Downscale to 480p -> final file named after the movie
-out="$OUTDIR/${movie}.mp4"
+out="$OUTDIR/movies/${movie}.mp4"
 echo "Downscaling to 480p -> $out"
 rawDuration=$(ffprobe -v error -show_entries format=duration -of csv=p=0 "$tmp720")
 ffmpeg_progress "${rawDuration:-$duration}" \

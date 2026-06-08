@@ -1,6 +1,6 @@
 # {
 #   "name": "download_madou_auto",
-#   "description": "Process the oldest N queued PasteItem records: for each, query the madou page URL from the mypim org, run dev download_madou on it, and delete the record on success. Aborts when the queue is empty or a step fails.",
+#   "description": "Process the oldest N Pending MadouQueueItem CustomData records from the mypim org: for each, build the madou page URL from Question__c, run dev download_madou on it, and mark the record Username__c='Done' on success. Aborts when the queue is empty or a step fails.",
 #   "usage": "dev download_madou_auto [N]"
 # }
 alias=mypim
@@ -27,12 +27,12 @@ retry() {
 
 queryOldest() {
     sf data query \
-        -q "SELECT Id, Answer__c FROM Item__c WHERE Type__c = 'PasteItem' ORDER BY CreatedDate ASC LIMIT 1" \
+        -q "SELECT Id, Question__c FROM Item__c WHERE Type__c = 'CustomData' AND Parent__r.Name = 'MadouQueueItem' AND Username__c = 'Pending' ORDER BY CreatedDate ASC LIMIT 1" \
         -o "$alias" --json
 }
 
-deleteRecord() {
-    sf data delete record -s Item__c -i "$1" -o "$alias" --json
+markDone() {
+    sf data update record -s Item__c -i "$1" -v "Username__c=Done" -o "$alias" --json
 }
 
 i=0
@@ -48,30 +48,32 @@ while [ "$i" -lt "$N" ]; do
 
     totalSize=$(printf '%s' "$result" | jq -r '.result.totalSize')
     if [ "$totalSize" = "0" ] || [ -z "$totalSize" ] || [ "$totalSize" = "null" ]; then
-        echo "No more PasteItem records; done."
+        echo "No more Pending MadouQueueItem records; done."
         exit 0
     fi
 
     recordId=$(printf '%s' "$result" | jq -r '.result.records[0].Id')
-    madou_url=$(printf '%s' "$result" | jq -r '.result.records[0].Answer__c')
+    madou_name=$(printf '%s' "$result" | jq -r '.result.records[0].Question__c')
 
     echo "Record:   $recordId"
 
-    if [ -z "$madou_url" ] || [ "$madou_url" = "null" ]; then
-        echo "Record $recordId has an empty madou URL; aborting (record kept)."
+    if [ -z "$madou_name" ] || [ "$madou_name" = "null" ]; then
+        echo "Record $recordId has an empty madou name; aborting (record kept)."
         exit 1
     fi
+
+    madou_url="https://madou.club/${madou_name}.html"
 
     if ! sh "$ScriptsDir/download_madou" "$madou_url"; then
         echo "download_madou failed for $madou_url; aborting (record kept)."
         exit 1
     fi
 
-    if ! retry deleteRecord "$recordId"; then
-        echo "Failed to delete record $recordId after retries; aborting."
+    if ! retry markDone "$recordId"; then
+        echo "Failed to mark record $recordId Done after retries; aborting."
         exit 1
     fi
-    echo "Deleted:  $recordId"
+    echo "Marked Done: $recordId"
 done
 
 echo "Reached N=$N iterations; stopping."

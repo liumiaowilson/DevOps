@@ -5,6 +5,7 @@
     const MADOU_BASE = 'https://madou.club';
     const DASH_BASE = 'https://dash.madou.club';
     const MAX_UPLOAD_ATTEMPTS = 3;
+    const MAX_DB_ATTEMPTS = 5;
     const RETRY_DELAY_MS = 3000;
 
     const filePath = context.argv[0];
@@ -14,6 +15,30 @@
     }
 
     const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+    // The long-running python steps (framing/compare/describe) idle the Salesforce
+    // keep-alive socket for minutes, so the mypim calls that follow can land on a
+    // half-closed connection. Treat connection-level drops/timeouts as transient.
+    const isHangup = err => {
+        if(!err) return false;
+        if(err.code === 'ECONNRESET' || err.code === 'EPIPE' || err.code === 'ETIMEDOUT' || err.code === 'ECONNREFUSED' || err.code === 'ENOTFOUND') return true;
+        const msg = ((err.message || '') + '').toLowerCase();
+        return msg.includes('socket hang up') || msg.includes('econnreset') || msg.includes('timeout') || msg.includes('network error');
+    };
+
+    // Retry a mypim (Salesforce) connection operation on transient connection drops.
+    const withRetry = async (label, fn) => {
+        for(let attempt = 1; attempt <= MAX_DB_ATTEMPTS; attempt++) {
+            try {
+                return await fn();
+            }
+            catch(err) {
+                if(attempt >= MAX_DB_ATTEMPTS || !isHangup(err)) throw err;
+                cmd.log(label + ' failed (attempt ' + attempt + '/' + MAX_DB_ATTEMPTS + '): ' + (err.code || err.message) + '; retrying in ' + RETRY_DELAY_MS + 'ms');
+                await sleep(RETRY_DELAY_MS);
+            }
+        }
+    };
 
     // Item__c.Name is the standard Name field, capped at 80 chars by Salesforce.
     const truncateForRecordName = name => name.length > 80 ? name.substring(0, 80).trim() : name;
@@ -28,7 +53,7 @@
         ].join('\n');
 
         const exec = new context.ExecuteService(context.mypim);
-        const result = await exec.executeAnonymous({ apexCode });
+        const result = await withRetry('pCloud login', () => exec.executeAnonymous({ apexCode }));
         if(!result.success) {
             const messages = (result.diagnostic || []).map(d =>
                 result.compiled
@@ -38,9 +63,9 @@
             throw new Error('pCloud login failed: ' + messages);
         }
 
-        const cvData = await context.mypim.query(
+        const cvData = await withRetry('pCloud token query', () => context.mypim.query(
             "SELECT Id, ContentDocumentId FROM ContentVersion WHERE Title = '" + logFileName + "' AND IsLatest = true"
-        );
+        ));
         if(!cvData.records.length) {
             throw new Error('pCloud token ContentVersion not found');
         }
@@ -49,7 +74,7 @@
         const cdId = cvData.records[0].ContentDocumentId;
 
         try {
-            const versionData = await context.mypim.request('/sobjects/ContentVersion/' + cvId + '/VersionData');
+            const versionData = await withRetry('pCloud token fetch', () => context.mypim.request('/sobjects/ContentVersion/' + cvId + '/VersionData'));
             const accessToken = JSON.parse(versionData);
             if(!accessToken) {
                 throw new Error('pCloud token is empty');
@@ -57,7 +82,7 @@
             return accessToken;
         }
         finally {
-            await context.mypim.sobject('ContentDocument').delete(cdId);
+            await withRetry('pCloud token cleanup', () => context.mypim.sobject('ContentDocument').delete(cdId));
         }
     };
 
@@ -266,7 +291,7 @@
 
             // 7. Create the Movie Item__c record with everything populated.
             context.ux.action.start('Creating Movie record');
-            const created = await context.mypim.sobject('Item__c').create({
+            const created = await withRetry('Create Movie record', () => context.mypim.sobject('Item__c').create({
                 Name: truncateForRecordName(fileName),
                 Type__c: 'Movie',
                 Extension__c: MOVIE_ROOT + '/' + fileName + '.mp4',
@@ -277,7 +302,7 @@
                 Password__c: resolution,
                 Show_In_UI__c: true,
                 End_Date__c: new Date().toISOString(),
-            });
+            }));
             const recordId = created.id || created.Id;
             if(!recordId) throw new Error('Failed to create Movie record');
             context.ux.action.stop();

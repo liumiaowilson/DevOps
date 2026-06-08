@@ -1,7 +1,7 @@
 # {
-#   "name": "save_movie",
+#   "name": "save_madou_movie",
 #   "description": "Scrape the madou poster for a downloaded movie, upload it to pCloud, summarize/describe/probe the local file, and create a Movie Item__c record",
-#   "usage": "dev save_movie <path/to/movie.mp4> [alias]"
+#   "usage": "dev save_madou_movie <path/to/movie.mp4> [alias]"
 # }
 filePath=$1
 alias=${2:-$DefaultAlias}
@@ -11,4 +11,4 @@ if [ -z "$filePath" ]; then
     exit 1
 fi
 
-sf mypim run script -o "$alias" -f ~/DevOps/cb_js/save_movie.js "$filePath"
+sf mypim run script -o "$alias" -f ~/DevOps/cb_js/save_madou_movie.js "$filePath"

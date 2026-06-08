@@ -43,6 +43,9 @@
     // Item__c.Name is the standard Name field, capped at 80 chars by Salesforce.
     const truncateForRecordName = name => name.length > 80 ? name.substring(0, 80).trim() : name;
 
+    // Escape a value for use inside a single-quoted SOQL string literal.
+    const soqlEscape = value => String(value).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+
     // ---- pCloud helpers (mirrors save_manga.js) ----
 
     const getPCloudToken = async () => {
@@ -181,7 +184,7 @@
             cmd.log('Meta: ' + duration + 's, ' + resolution);
 
             // 2. Summarize — extract frames then build summary.txt (summarizeMovie logic).
-            const framesDir = fs.mkdtempSync(path.join(os.tmpdir(), 'save_movie_'));
+            const framesDir = fs.mkdtempSync(path.join(os.tmpdir(), 'save_madou_movie_'));
             let summary;
             try {
                 cmd.log('Extracting frames into ' + framesDir);
@@ -306,6 +309,29 @@
             const recordId = created.id || created.Id;
             if(!recordId) throw new Error('Failed to create Movie record');
             context.ux.action.stop();
+
+            // 8. Best-effort cleanup: remove the matching "Done" MadouQueueItem record.
+            //    The Movie is already saved, so a missing/failed cleanup is logged, not fatal.
+            try {
+                const queueName = truncateForRecordName(fileName);
+                const queueResult = await withRetry('Query queue record', () => context.mypim.query(
+                    "SELECT Id FROM Item__c WHERE Type__c = 'CustomData'"
+                    + " AND Parent__r.Name = 'MadouQueueItem'"
+                    + " AND Name = '" + soqlEscape(queueName) + "'"
+                    + " AND Username__c = 'Done' LIMIT 1"
+                ));
+                if(queueResult.records.length) {
+                    const queueId = queueResult.records[0].Id;
+                    await withRetry('Delete queue record', () => context.mypim.sobject('Item__c').delete(queueId));
+                    cmd.log('Deleted queue record: ' + queueId);
+                }
+                else {
+                    cmd.log('No matching "Done" MadouQueueItem record to delete for "' + queueName + '"');
+                }
+            }
+            catch(err) {
+                cmd.warn('Queue record cleanup failed (Movie was still saved): ' + (err.message || String(err)));
+            }
 
             cmd.logSuccess('Saved "' + fileName + '" — Movie ' + recordId + ', poster ' + file1 + ', ' + duration + 's, ' + resolution);
         })().catch(err => {

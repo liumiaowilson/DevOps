@@ -105,11 +105,13 @@ echo "Duration: ${duration}s"
 # 5. Download + decrypt + mux (lossless copy)
 tmp720="$tmpdir/raw.mp4"
 echo "Downloading and decrypting..."
+# NOTE: no -reconnect* flags here. The input is a local playlist file, so it is
+# opened via the file protocol and ffmpeg (8.x) fatally rejects the http-only
+# reconnect options as unconsumed ("Option reconnect not found"). Each .ts is a
+# separate short GET that the HLS demuxer already retries on its own.
 ffmpeg_progress "$duration" \
     -allowed_extensions ALL \
     -protocol_whitelist file,http,https,tcp,tls,crypto \
-    -reconnect 1 -reconnect_streamed 1 -reconnect_on_network_error 1 \
-    -reconnect_delay_max 10 -reconnect_max_retries 10 \
     -i "$tmpdir/play.m3u8" \
     -c copy -bsf:a aac_adtstoasc \
     "$tmp720"

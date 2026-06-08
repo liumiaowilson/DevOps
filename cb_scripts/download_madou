@@ -57,27 +57,40 @@ fi
 videoId=$(basename "$shareUrl")
 echo "Video ID: $videoId"
 
-# 3. Fetch the share page -> fresh token (lives ~100s) + m3u8 path
-share=$(curl -s -A "$UA" "$shareUrl")
-token=$(printf '%s' "$share" | grep -oE 'var token = "[^"]*"' | sed -E 's/var token = "([^"]*)"/\1/')
-m3u8path=$(printf '%s' "$share" | grep -oE "var m3u8 = '[^']+'" | sed -E "s/var m3u8 = '([^']+)'/\1/")
-if [ -z "$m3u8path" ]; then
-    echo 'Could not find the m3u8 path on the share page'
-    exit 1
-fi
-playlistUrl="${BASE}${m3u8path}"
-[ -n "$token" ] && playlistUrl="${playlistUrl}?token=${token}"
-
-# 4. Fetch the playlist while the token is valid, then rewrite relative
-#    segment names to absolute URLs (key + segments are public, no token needed)
+# 3 + 4. Fetch the share page for a fresh token (lives ~100s) + m3u8 path, then
+#    fetch the playlist while the token is valid. The token can expire or be
+#    rejected (HTTP 404 "对不起，您没有权限"), so retry the whole share->playlist
+#    fetch with a fresh token each attempt.
 tmpdir=$(mktemp -d)
 trap 'rm -rf "$tmpdir"' EXIT
 segBase="${BASE}/videos/${videoId}"
-httpCode=$(curl -s -A "$UA" -e "$shareUrl" "$playlistUrl" -o "$tmpdir/orig.m3u8" -w '%{http_code}')
-if [ "$httpCode" != "200" ]; then
+maxAttempts=5
+attempt=1
+while :; do
+    share=$(curl -s -A "$UA" "$shareUrl")
+    token=$(printf '%s' "$share" | grep -oE 'var token = "[^"]*"' | sed -E 's/var token = "([^"]*)"/\1/')
+    m3u8path=$(printf '%s' "$share" | grep -oE "var m3u8 = '[^']+'" | sed -E "s/var m3u8 = '([^']+)'/\1/")
+    if [ -z "$m3u8path" ]; then
+        echo 'Could not find the m3u8 path on the share page'
+        exit 1
+    fi
+    playlistUrl="${BASE}${m3u8path}"
+    [ -n "$token" ] && playlistUrl="${playlistUrl}?token=${token}"
+
+    # segment names to absolute URLs (key + segments are public, no token needed)
+    httpCode=$(curl -s -A "$UA" -e "$shareUrl" "$playlistUrl" -o "$tmpdir/orig.m3u8" -w '%{http_code}')
+    if [ "$httpCode" = "200" ]; then
+        break
+    fi
     echo "Failed to fetch playlist (HTTP $httpCode): $(cat "$tmpdir/orig.m3u8")"
-    exit 1
-fi
+    if [ "$attempt" -ge "$maxAttempts" ]; then
+        echo "Giving up after $maxAttempts attempts"
+        exit 1
+    fi
+    echo "Retrying with a fresh token ($attempt/$maxAttempts)..."
+    attempt=$((attempt + 1))
+    sleep 2
+done
 sed -E "s#^([^#].*\.ts.*)\$#${segBase}/\1#" "$tmpdir/orig.m3u8" > "$tmpdir/play.m3u8"
 playlist="$OUTDIR/playlists/${movie}.m3u8"
 cp "$tmpdir/play.m3u8" "$playlist"

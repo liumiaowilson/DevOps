@@ -1,0 +1,291 @@
+(function(cmd, context) {
+    const USER_AGENT = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
+    const PCLOUD_ROOT = '/MyPIM/Movie_Image';
+    const MOVIE_ROOT = '/MyPIM/Movie';
+    const MADOU_BASE = 'https://madou.club';
+    const DASH_BASE = 'https://dash.madou.club';
+    const MAX_UPLOAD_ATTEMPTS = 3;
+    const RETRY_DELAY_MS = 3000;
+
+    const filePath = context.argv[0];
+    if(!filePath) {
+        cmd.error('Movie file path is required');
+        return;
+    }
+
+    const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+    // Item__c.Name is the standard Name field, capped at 80 chars by Salesforce.
+    const truncateForRecordName = name => name.length > 80 ? name.substring(0, 80).trim() : name;
+
+    // ---- pCloud helpers (mirrors save_manga.js) ----
+
+    const getPCloudToken = async () => {
+        const logFileName = 'pcloudtoken-' + Date.now() + '.json';
+        const apexCode = [
+            "String token = GPCloudService.doLogin('__default__');",
+            "insert new ContentVersion(Title = '" + logFileName + "', PathOnClient = '" + logFileName + "', VersionData = Blob.valueOf(JSON.serialize(token)));",
+        ].join('\n');
+
+        const exec = new context.ExecuteService(context.mypim);
+        const result = await exec.executeAnonymous({ apexCode });
+        if(!result.success) {
+            const messages = (result.diagnostic || []).map(d =>
+                result.compiled
+                    ? 'Line ' + d.lineNumber + ': ' + d.exceptionMessage
+                    : 'Line ' + d.lineNumber + ': ' + d.compileProblem
+            ).join('; ');
+            throw new Error('pCloud login failed: ' + messages);
+        }
+
+        const cvData = await context.mypim.query(
+            "SELECT Id, ContentDocumentId FROM ContentVersion WHERE Title = '" + logFileName + "' AND IsLatest = true"
+        );
+        if(!cvData.records.length) {
+            throw new Error('pCloud token ContentVersion not found');
+        }
+
+        const cvId = cvData.records[0].Id;
+        const cdId = cvData.records[0].ContentDocumentId;
+
+        try {
+            const versionData = await context.mypim.request('/sobjects/ContentVersion/' + cvId + '/VersionData');
+            const accessToken = JSON.parse(versionData);
+            if(!accessToken) {
+                throw new Error('pCloud token is empty');
+            }
+            return accessToken;
+        }
+        finally {
+            await context.mypim.sobject('ContentDocument').delete(cdId);
+        }
+    };
+
+    const pcloudCreateFolder = async (path, accessToken) => {
+        const resp = await context.axios.get('https://api.pcloud.com/createfolder', {
+            params: { access_token: accessToken, path },
+        });
+        const data = resp.data;
+        if(data && data.result === 2004) {
+            return { exists: true };
+        }
+        if(!data || data.result !== 0) {
+            throw new Error((data && data.error) || ('pCloud createfolder error ' + (data && data.result)));
+        }
+        return data;
+    };
+
+    const pcloudUploadFile = async (folderPath, filename, buffer, contentType, accessToken) => {
+        const formDataMod = await context.require('form-data');
+        const FormData = formDataMod.default || formDataMod;
+
+        for(let attempt = 1; attempt <= MAX_UPLOAD_ATTEMPTS; attempt++) {
+            try {
+                const form = new FormData();
+                form.append('fileList', buffer, { filename, contentType });
+                const resp = await context.axios.post('https://api.pcloud.com/uploadfile', form, {
+                    params: {
+                        access_token: accessToken,
+                        path: folderPath.replace(/\/$/, ''),
+                        filename,
+                        renameifexists: 0,
+                    },
+                    headers: form.getHeaders(),
+                    maxContentLength: Infinity,
+                    maxBodyLength: Infinity,
+                    timeout: 120000,
+                });
+                const data = resp.data;
+                if(!data || data.result !== 0) {
+                    throw new Error((data && data.error) || ('pCloud upload error ' + (data && data.result)));
+                }
+                return data;
+            }
+            catch(err) {
+                if(attempt >= MAX_UPLOAD_ATTEMPTS) throw err;
+                cmd.log('Upload failed for ' + filename + ' (attempt ' + attempt + '/' + MAX_UPLOAD_ATTEMPTS + '): ' + err.message + '; retrying in ' + RETRY_DELAY_MS + 'ms');
+                await sleep(RETRY_DELAY_MS);
+            }
+        }
+    };
+
+    return Promise.all([
+        context.require('fs'),
+        context.require('path'),
+        context.require('os'),
+        context.require('child_process'),
+    ]).then(([ fsMod, pathMod, osMod, cpMod, ]) => {
+        const fs = fsMod.default || fsMod;
+        const path = pathMod.default || pathMod;
+        const os = osMod.default || osMod;
+        const cp = cpMod.default || cpMod;
+
+        const pyScript = name => path.join(os.homedir(), 'mypim-codebuilder', 'scripts', name);
+
+        return (async () => {
+            const resolvedPath = filePath.replace(/^~(?=$|\/)/, os.homedir());
+            if(!fs.existsSync(resolvedPath)) {
+                throw new Error('File not found: ' + resolvedPath);
+            }
+            const fileName = path.basename(resolvedPath, path.extname(resolvedPath));
+            cmd.log('Movie: ' + fileName);
+
+            // 1. Meta — probe duration + resolution from the local file (metaMovie logic).
+            cmd.log('Probing metadata...');
+            const metaResult = cp.spawnSync('python3', [ pyScript('meta-movie.py'), resolvedPath, ], {
+                stdio: [ 'ignore', 'pipe', 'inherit', ],
+            });
+            if(metaResult.status !== 0) {
+                throw new Error('meta-movie.py exited with status ' + metaResult.status);
+            }
+            let meta;
+            try {
+                meta = JSON.parse(metaResult.stdout.toString().trim());
+            }
+            catch(e) {
+                throw new Error('Failed to parse meta-movie.py output: ' + e.message);
+            }
+            const duration = Math.round(Number(meta.duration_seconds));
+            const resolution = meta.resolution;
+            if(!Number.isFinite(duration) || duration <= 0) {
+                throw new Error('Invalid duration_seconds in meta-movie.py output: ' + meta.duration_seconds);
+            }
+            if(!resolution) {
+                throw new Error('Missing resolution in meta-movie.py output');
+            }
+            cmd.log('Meta: ' + duration + 's, ' + resolution);
+
+            // 2. Summarize — extract frames then build summary.txt (summarizeMovie logic).
+            const framesDir = fs.mkdtempSync(path.join(os.tmpdir(), 'save_movie_'));
+            let summary;
+            try {
+                cmd.log('Extracting frames into ' + framesDir);
+                const frameResult = cp.spawnSync('python3', [ pyScript('frame-movie.py'), resolvedPath, framesDir, ], { stdio: 'inherit' });
+                if(frameResult.status !== 0) {
+                    throw new Error('frame-movie.py exited with status ' + frameResult.status);
+                }
+
+                cmd.log('Summarizing frames...');
+                const compareResult = cp.spawnSync('python3', [ pyScript('frame-compare.py'), framesDir, ], {
+                    stdio: [ 'ignore', 'inherit', 'inherit', ],
+                });
+                if(compareResult.status !== 0) {
+                    throw new Error('frame-compare.py exited with status ' + compareResult.status);
+                }
+
+                const summaryPath = path.join(framesDir, 'summary.txt');
+                if(!fs.existsSync(summaryPath)) {
+                    throw new Error('frame-compare.py did not produce summary.txt');
+                }
+                summary = fs.readFileSync(summaryPath, 'utf8');
+                if(!summary || !summary.trim()) {
+                    throw new Error('summary.txt is empty');
+                }
+
+                // 3. Describe — condense the summary into a description (describeMovie logic).
+                cmd.log('Describing movie...');
+                const describeResult = cp.spawnSync('python3', [ pyScript('describe-movie.py'), ], {
+                    input: summary,
+                    stdio: [ 'pipe', 'pipe', 'inherit', ],
+                });
+                if(describeResult.status !== 0) {
+                    throw new Error('describe-movie.py exited with status ' + describeResult.status);
+                }
+                var description = describeResult.stdout.toString().trim();
+                if(!description) {
+                    throw new Error('describe-movie.py returned empty output');
+                }
+            }
+            finally {
+                try { fs.rmSync(framesDir, { recursive: true, force: true }); } catch(e) { /* best effort */ }
+            }
+
+            // 4. Scrape the poster image URL from the madou page -> dash share iframe.
+            context.ux.action.start('Fetching madou page');
+            const madouUrl = MADOU_BASE + '/' + encodeURIComponent(fileName) + '.html';
+            const pageResp = await context.axios.get(madouUrl, {
+                headers: { 'User-Agent': USER_AGENT },
+                timeout: 30000,
+            });
+            const pageHtml = typeof pageResp.data === 'string' ? pageResp.data : '';
+            const shareM = /(https?:)?\/\/dash\.madou\.club\/share\/[a-f0-9]+/i.exec(pageHtml);
+            if(!shareM) {
+                context.ux.action.stop();
+                throw new Error('Could not find the video iframe on ' + madouUrl);
+            }
+            let shareUrl = shareM[0];
+            if(shareUrl.startsWith('//')) shareUrl = 'https:' + shareUrl;
+            context.ux.action.stop();
+            cmd.log('Share: ' + shareUrl);
+
+            context.ux.action.start('Fetching share page');
+            const shareResp = await context.axios.get(shareUrl, {
+                headers: { 'User-Agent': USER_AGENT, 'Referer': madouUrl },
+                timeout: 30000,
+            });
+            const shareHtml = typeof shareResp.data === 'string' ? shareResp.data : '';
+            // The DPlayer config on the share page carries the poster, e.g. pic: '/videos/<id>/poster.jpg'
+            const picM = /pic:\s*['"]([^'"]+)['"]/i.exec(shareHtml);
+            context.ux.action.stop();
+            if(!picM) {
+                throw new Error('Could not find the poster (pic) on the share page ' + shareUrl);
+            }
+            let posterUrl = picM[1];
+            if(posterUrl.startsWith('//')) posterUrl = 'https:' + posterUrl;
+            else if(posterUrl.startsWith('/')) posterUrl = DASH_BASE + posterUrl;
+            cmd.log('Poster: ' + posterUrl);
+
+            // 5. Download the poster and save it to a tmp folder.
+            context.ux.action.start('Downloading poster');
+            const posterResp = await context.axios.get(posterUrl, {
+                responseType: 'arraybuffer',
+                headers: { 'User-Agent': USER_AGENT, 'Referer': shareUrl },
+                timeout: 60000,
+            });
+            const posterBuffer = Buffer.from(posterResp.data);
+            const posterContentType = posterResp.headers['content-type'] || 'image/jpeg';
+            const localPosterPath = path.join(os.tmpdir(), fileName + '.jpg');
+            fs.writeFileSync(localPosterPath, posterBuffer);
+            context.ux.action.stop();
+            cmd.log('Saved poster locally: ' + localPosterPath);
+
+            // 6. Upload the poster to pCloud /MyPIM/Movie_Image/<fileName>.jpg
+            context.ux.action.start('Logging into pCloud');
+            const accessToken = await getPCloudToken();
+            context.ux.action.stop();
+
+            await pcloudCreateFolder(PCLOUD_ROOT, accessToken);
+
+            context.ux.action.start('Uploading poster to pCloud');
+            const posterFilename = fileName + '.jpg';
+            const uploadData = await pcloudUploadFile(PCLOUD_ROOT, posterFilename, posterBuffer, posterContentType, accessToken);
+            const uploaded = uploadData && uploadData.metadata && uploadData.metadata[0];
+            const file1 = (uploaded && uploaded.path) || (PCLOUD_ROOT + '/' + posterFilename);
+            context.ux.action.stop();
+            cmd.log('Uploaded poster: ' + file1);
+
+            // 7. Create the Movie Item__c record with everything populated.
+            context.ux.action.start('Creating Movie record');
+            const created = await context.mypim.sobject('Item__c').create({
+                Name: truncateForRecordName(fileName),
+                Type__c: 'Movie',
+                Extension__c: MOVIE_ROOT + '/' + fileName + '.mp4',
+                File_1__c: file1,
+                Text__c: summary,
+                Description__c: description,
+                Price__c: duration,
+                Password__c: resolution,
+                Show_In_UI__c: true,
+                End_Date__c: new Date().toISOString(),
+            });
+            const recordId = created.id || created.Id;
+            if(!recordId) throw new Error('Failed to create Movie record');
+            context.ux.action.stop();
+
+            cmd.logSuccess('Saved "' + fileName + '" — Movie ' + recordId + ', poster ' + file1 + ', ' + duration + 's, ' + resolution);
+        })().catch(err => {
+            context.ux.action.stop();
+            cmd.error(err.message || String(err));
+        });
+    });
+})

@@ -289,6 +289,11 @@
             const uploadData = await pcloudUploadFile(PCLOUD_ROOT, posterFilename, posterBuffer, posterContentType, accessToken);
             const uploaded = uploadData && uploadData.metadata && uploadData.metadata[0];
             const file1 = (uploaded && uploaded.path) || (PCLOUD_ROOT + '/' + posterFilename);
+            // pCloud sometimes rewrites the uploaded filename (sanitizing characters);
+            // uploaded.name carries the actual stored name. Derive the movie path from it
+            // so Extension__c matches the same rewrite pCloud applies to the movie file.
+            const coverFilename = (uploaded && uploaded.name) || posterFilename;
+            const movieBaseName = path.basename(coverFilename, path.extname(coverFilename));
             context.ux.action.stop();
             cmd.log('Uploaded poster: ' + file1);
 
@@ -297,7 +302,7 @@
             const created = await withRetry('Create Movie record', () => context.mypim.sobject('Item__c').create({
                 Name: truncateForRecordName(fileName),
                 Type__c: 'Movie',
-                Extension__c: MOVIE_ROOT + '/' + fileName + '.mp4',
+                Extension__c: MOVIE_ROOT + '/' + movieBaseName + '.mp4',
                 File_1__c: file1,
                 Text__c: summary,
                 Description__c: description,

@@ -1,0 +1,61 @@
+# {
+#   "name": "save_madou_movie_auto",
+#   "description": "Iterate top-level files in a folder (alphabetical) and run save_madou_movie for each, aborting on first error. Records progress in a sidecar file so re-running the same folder resumes where it left off",
+#   "usage": "dev save_madou_movie_auto <folder> [alias]"
+# }
+dir=$1
+alias=${2:-$DefaultAlias}       # optional: forwarded to each save_madou_movie call
+
+if [ -z "$dir" ]; then
+    echo 'Folder is required'
+    exit 1
+fi
+
+absDir=$(cd "$dir" 2>/dev/null && pwd)
+if [ -z "$absDir" ]; then
+    echo "Folder does not exist: $dir"
+    exit 1
+fi
+
+# Sidecar progress file: one absolute file path per successfully processed file.
+# Re-running the same folder skips paths already listed here.
+progressFile="$absDir/.save_madou_movie_auto.done"
+touch "$progressFile"
+
+# Count top-level regular files for progress reporting (excludes the sidecar).
+total=0
+for f in "$absDir"/*; do
+    [ -f "$f" ] || continue
+    [ "$f" = "$progressFile" ] && continue
+    total=$((total + 1))
+done
+
+current=0
+processed=0
+skipped=0
+
+for f in "$absDir"/*; do
+    [ -f "$f" ] || continue
+    [ "$f" = "$progressFile" ] && continue
+    current=$((current + 1))
+
+    if grep -Fxq "$f" "$progressFile"; then
+        skipped=$((skipped + 1))
+        echo "[$current/$total] Skipping (already done): $f"
+        continue
+    fi
+
+    echo ""
+    echo "[$current/$total] Saving: $f"
+    if ! dev save_madou_movie "$f" "$alias"; then
+        echo "[$current/$total] Failed: $f"
+        echo "Aborting — save_madou_movie errored out."
+        exit 1
+    fi
+    echo "$f" >> "$progressFile"
+    processed=$((processed + 1))
+    echo "[$current/$total] Done: $f"
+done
+
+echo ""
+echo "Finished. Processed $processed, skipped $skipped, of $total file(s)."

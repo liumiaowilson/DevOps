@@ -205,9 +205,11 @@ echo "Downloading and decrypting..."
 # opened via the file protocol and ffmpeg (8.x) fatally rejects the http-only
 # reconnect options as unconsumed ("Option reconnect not found"). Each .ts is a
 # separate short GET that the HLS demuxer already retries on its own.
+# httpproxy is whitelisted so ffmpeg can CONNECT-tunnel https segments when http_proxy is set
+# (download_madou_auto's socks/HTTP-bridge remote mode); unused on the direct path.
 ffmpeg_progress "$duration" \
     -allowed_extensions ALL \
-    -protocol_whitelist file,http,https,tcp,tls,crypto \
+    -protocol_whitelist file,http,https,tcp,tls,crypto,httpproxy \
     -i "$ffInput" \
     -c copy -bsf:a aac_adtstoasc \
     "$tmp720"

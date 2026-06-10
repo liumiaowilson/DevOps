@@ -1,15 +1,39 @@
 # {
 #   "name": "download_madou_auto",
-#   "description": "Process the oldest N Pending MadouQueueItem CustomData records from the mypim org: for each, build the madou page URL from Question__c, run dev download_madou on it, and mark the record Username__c='Done' on success. Aborts when the queue is empty or a step fails. Pass 'remote' to route madou page fetches through compute automation.",
+#   "description": "Process the oldest N Pending MadouQueueItem CustomData records from the mypim org: for each, build the madou page URL from Question__c, run dev download_madou on it, and mark the record Username__c='Done' on success. Aborts when the queue is empty or a step fails. Pass 'remote' to route curl (madou pages) through a SOCKS5 SSH tunnel and ffmpeg (key + segments) through a SOCKS5->HTTP bridge, instead of compute automation.",
 #   "usage": "dev download_madou_auto [N] [remote]"
 # }
 alias=mypim
 N=${1:-1}
-mode=$2                         # optional: 'remote' to route madou page fetches through compute automation
+mode=$2                         # optional: 'remote' to route fetches through the SOCKS tunnel + HTTP bridge
 
 if ! [[ "$N" =~ ^[1-9][0-9]*$ ]]; then
     echo "Error: N must be a positive integer (got: '$N')"
     exit 1
+fi
+
+UA="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+
+# Remote mode proxies (override via env). SOCKS_PROXY is the SSH dynamic tunnel used by curl
+# for madou page/share/playlist fetches; HTTP_PROXY_BRIDGE is a SOCKS5->HTTP bridge (e.g. privoxy
+# 'forward-socks5 / 127.0.0.1:1080 .') used by ffmpeg, which has no native SOCKS support (option B).
+SOCKS_PROXY=${MADOU_SOCKS_PROXY:-socks5h://127.0.0.1:1080}
+HTTP_PROXY_BRIDGE=${MADOU_HTTP_PROXY:-http://127.0.0.1:8118}
+
+# In remote mode, verify both proxies are reachable once up front (fail fast with how to start them)
+# rather than discovering it per-record mid-download.
+if [ "$mode" = "remote" ]; then
+    echo "Remote mode: curl via SOCKS ($SOCKS_PROXY), ffmpeg via HTTP bridge ($HTTP_PROXY_BRIDGE)"
+    if ! curl -s --max-time 10 -A "$UA" -x "$SOCKS_PROXY" -o /dev/null https://madou.club/; then
+        echo "SOCKS proxy $SOCKS_PROXY is not reachable. Start the SSH tunnel, e.g.:" >&2
+        echo "  ssh -D 1080 -N -C -p 443 root@<kamatera-ip>" >&2
+        exit 1
+    fi
+    if ! curl -s --max-time 10 -A "$UA" -x "$HTTP_PROXY_BRIDGE" -o /dev/null https://dash.madou.club/; then
+        echo "HTTP bridge $HTTP_PROXY_BRIDGE is not reachable. Start privoxy forwarding to the tunnel:" >&2
+        echo "  add 'forward-socks5 / 127.0.0.1:1080 .' to its config (listen 127.0.0.1:8118), then run privoxy" >&2
+        exit 1
+    fi
 fi
 
 # Retry an org/sf operation up to 3 times with a 5s pause between attempts.
@@ -65,7 +89,21 @@ while [ "$i" -lt "$N" ]; do
 
     madou_url="https://madou.club/${madou_name}.html"
 
-    if ! sh "$ScriptsDir/download_madou" "$madou_url" "$mode"; then
+    if [ "$mode" = "remote" ]; then
+        # Run download_madou in DIRECT mode but scope proxy env to this child only (the parent's
+        # sf calls stay direct). curl's https fetches ignore http_proxy and fall through to
+        # ALL_PROXY (the SOCKS tunnel); https_proxy is unset so it can't divert them to the bridge
+        # and filter the scraped HTML. ffmpeg reads http_proxy -> the SOCKS5->HTTP bridge (option B).
+        env -u https_proxy -u HTTPS_PROXY \
+            ALL_PROXY="$SOCKS_PROXY" all_proxy="$SOCKS_PROXY" \
+            http_proxy="$HTTP_PROXY_BRIDGE" \
+            sh "$ScriptsDir/download_madou" "$madou_url"
+        dl_rc=$?
+    else
+        sh "$ScriptsDir/download_madou" "$madou_url" "$mode"
+        dl_rc=$?
+    fi
+    if [ "$dl_rc" -ne 0 ]; then
         echo "download_madou failed for $madou_url; aborting (record kept)."
         exit 1
     fi

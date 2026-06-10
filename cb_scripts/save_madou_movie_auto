@@ -1,10 +1,11 @@
 # {
 #   "name": "save_madou_movie_auto",
-#   "description": "Iterate top-level files in a folder (alphabetical) and run save_madou_movie for each, aborting on first error. Records progress in a sidecar file so re-running the same folder resumes where it left off",
-#   "usage": "dev save_madou_movie_auto <folder> [alias]"
+#   "description": "Iterate top-level files in a folder (alphabetical) and run save_madou_movie for each, aborting on first error. Records progress in a sidecar file so re-running the same folder resumes where it left off. Pass 'remote' to route madou requests through compute automation",
+#   "usage": "dev save_madou_movie_auto <folder> [remote] [alias]"
 # }
 dir=$1
-alias=${2:-$DefaultAlias}       # optional: forwarded to each save_madou_movie call
+mode=$2                         # optional: 'remote' to use compute automation for madou requests
+alias=${3:-$DefaultAlias}       # optional: forwarded to each save_madou_movie call
 
 if [ -z "$dir" ]; then
     echo 'Folder is required'
@@ -47,7 +48,7 @@ for f in "$absDir"/*; do
 
     echo ""
     echo "[$current/$total] Saving: $f"
-    if ! dev save_madou_movie "$f" "$alias"; then
+    if ! dev save_madou_movie "$f" "$mode" "$alias"; then
         echo "[$current/$total] Failed: $f"
         echo "Aborting — save_madou_movie errored out."
         exit 1

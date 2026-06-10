@@ -14,6 +14,11 @@
         return;
     }
 
+    // 'remote' as the second script arg routes madou.club/dash.madou.club requests through
+    // the compute /automation endpoint (which runs from a non-geo-blocked location), mirroring
+    // save_manga.js. pCloud calls and the local python steps always stay local.
+    const REMOTE = context.argv[1] === 'remote';
+
     const sleep = ms => new Promise(r => setTimeout(r, ms));
 
     // The long-running python steps (framing/compare/describe) idle the Salesforce
@@ -45,6 +50,84 @@
 
     // Escape a value for use inside a single-quoted SOQL string literal.
     const soqlEscape = value => String(value).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+
+    // ---- Remote fetch helpers (mirrors save_manga.js) ----
+
+    // Run an automation script server-side via the org's /computeAutomation REST resource
+    // (ComputeAutomationRestService -> GComputeService.runComputeScript). The compute HTTP
+    // callout then originates from Salesforce, not this machine, so it works even where the
+    // local network blocks egress to madou.club. doPost returns the serialized
+    // {success, result|message} envelope (Apex REST wraps the String body, so it arrives
+    // here as a JSON string). Returns the `result` payload.
+    const runAutomation = async (code, data) => {
+        const raw = await context.mypim.apex.post('/computeAutomation', {
+            code,
+            data: JSON.stringify(data),
+        });
+        const envelope = typeof raw === 'string' ? JSON.parse(raw) : raw;
+        if(!envelope || envelope.success === false) {
+            throw new Error((envelope && envelope.message) || 'runComputeAutomation failed');
+        }
+        return envelope.result;
+    };
+
+    // Remote GET for HTML pages — returns the response body as a string. Parsing of that
+    // HTML still happens locally in node, so only the network hop is offloaded.
+    const REMOTE_GET_SCRIPT = `
+const axios = require('axios');
+(function() {
+    return axios.get($data.url, {
+        headers: $data.headers,
+        timeout: 30000,
+    }).then(resp => (typeof resp.data === 'string' ? resp.data : ''));
+})()
+`;
+
+    // Remote GET for image bytes — base64-encodes the buffer to cross the JSON envelope.
+    const REMOTE_IMAGE_SCRIPT = `
+const axios = require('axios');
+(function() {
+    return axios.get($data.url, {
+        responseType: 'arraybuffer',
+        headers: $data.headers,
+        timeout: 60000,
+    }).then(resp => ({
+        data: Buffer.from(resp.data).toString('base64'),
+        contentType: resp.headers['content-type'] || 'application/octet-stream',
+    }));
+})()
+`;
+
+    // Fetch a madou HTML page, returning the body string. Local axios by default;
+    // remote compute automation when invoked with the 'remote' parameter.
+    const madouGetHtml = async (url, headers) => {
+        if(REMOTE) {
+            return runAutomation(REMOTE_GET_SCRIPT, { url, headers });
+        }
+        const resp = await context.axios.get(url, { headers, timeout: 30000 });
+        return typeof resp.data === 'string' ? resp.data : '';
+    };
+
+    // Download a madou image (e.g. the poster). Returns { buffer, contentType }. Local axios
+    // by default; remote compute automation when invoked with the 'remote' parameter.
+    const madouDownload = async (url, headers) => {
+        if(REMOTE) {
+            const result = await runAutomation(REMOTE_IMAGE_SCRIPT, { url, headers });
+            return {
+                buffer: Buffer.from(result.data, 'base64'),
+                contentType: result.contentType || 'image/jpeg',
+            };
+        }
+        const resp = await context.axios.get(url, {
+            responseType: 'arraybuffer',
+            headers,
+            timeout: 60000,
+        });
+        return {
+            buffer: Buffer.from(resp.data),
+            contentType: resp.headers['content-type'] || 'image/jpeg',
+        };
+    };
 
     // ---- pCloud helpers (mirrors save_manga.js) ----
 
@@ -231,11 +314,7 @@
             // 4. Scrape the poster image URL from the madou page -> dash share iframe.
             context.ux.action.start('Fetching madou page');
             const madouUrl = MADOU_BASE + '/' + encodeURIComponent(fileName) + '.html';
-            const pageResp = await context.axios.get(madouUrl, {
-                headers: { 'User-Agent': USER_AGENT },
-                timeout: 30000,
-            });
-            const pageHtml = typeof pageResp.data === 'string' ? pageResp.data : '';
+            const pageHtml = await madouGetHtml(madouUrl, { 'User-Agent': USER_AGENT });
             const shareM = /(https?:)?\/\/dash\.madou\.club\/share\/[a-f0-9]+/i.exec(pageHtml);
             if(!shareM) {
                 context.ux.action.stop();
@@ -247,11 +326,7 @@
             cmd.log('Share: ' + shareUrl);
 
             context.ux.action.start('Fetching share page');
-            const shareResp = await context.axios.get(shareUrl, {
-                headers: { 'User-Agent': USER_AGENT, 'Referer': madouUrl },
-                timeout: 30000,
-            });
-            const shareHtml = typeof shareResp.data === 'string' ? shareResp.data : '';
+            const shareHtml = await madouGetHtml(shareUrl, { 'User-Agent': USER_AGENT, 'Referer': madouUrl });
             // The DPlayer config on the share page carries the poster, e.g. pic: '/videos/<id>/poster.jpg'
             const picM = /pic:\s*['"]([^'"]+)['"]/i.exec(shareHtml);
             context.ux.action.stop();
@@ -265,13 +340,7 @@
 
             // 5. Download the poster and save it to a tmp folder.
             context.ux.action.start('Downloading poster');
-            const posterResp = await context.axios.get(posterUrl, {
-                responseType: 'arraybuffer',
-                headers: { 'User-Agent': USER_AGENT, 'Referer': shareUrl },
-                timeout: 60000,
-            });
-            const posterBuffer = Buffer.from(posterResp.data);
-            const posterContentType = posterResp.headers['content-type'] || 'image/jpeg';
+            const { buffer: posterBuffer, contentType: posterContentType } = await madouDownload(posterUrl, { 'User-Agent': USER_AGENT, 'Referer': shareUrl });
             const localPosterPath = path.join(os.tmpdir(), fileName + '.jpg');
             fs.writeFileSync(localPosterPath, posterBuffer);
             context.ux.action.stop();
@@ -341,7 +410,11 @@
             cmd.logSuccess('Saved "' + fileName + '" — Movie ' + recordId + ', poster ' + file1 + ', ' + duration + 's, ' + resolution);
         })().catch(err => {
             context.ux.action.stop();
-            cmd.error(err.message || String(err));
+            let msg = err.message || String(err);
+            if(!REMOTE) {
+                msg += '\n(If madou.club is unreachable/geo-blocked, re-run with the "remote" parameter to route madou requests through compute automation.)';
+            }
+            cmd.error(msg);
         });
     });
 })

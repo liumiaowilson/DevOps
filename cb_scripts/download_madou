@@ -21,7 +21,10 @@ UA="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, l
 # (NOT routed remote). When direct, the original curl path is used unchanged.
 REMOTE=0
 [ "$mode" = "remote" ] && REMOTE=1
-fetchAlias=${DefaultAlias:-mypim}
+# The remote path is entirely mypim-bound: the /computeAutomation endpoint, the public
+# proxy site, and the '/API/MyPIM/key' Config_Item__c all live in the mypim org. Pin to it
+# rather than the user's default org (DefaultAlias, e.g. 'test') which lacks these records.
+fetchAlias=mypim
 
 # Fetch a madou page/playlist via compute automation, writing the body to $2 and echoing
 # the HTTP status code (so callers can branch, e.g. the playlist token-expiry retry).
@@ -94,8 +97,15 @@ attempt=1
 while :; do
     if [ "$REMOTE" = "1" ]; then
         if ! madou_remote_get "$shareUrl" "$tmpdir/share.html" >/dev/null; then
-            echo 'Could not fetch the share page via compute automation'
-            exit 1
+            echo 'Failed to fetch the share page via compute automation'
+            if [ "$attempt" -ge "$maxAttempts" ]; then
+                echo "Giving up after $maxAttempts attempts"
+                exit 1
+            fi
+            echo "Retrying the share page ($attempt/$maxAttempts)..."
+            attempt=$((attempt + 1))
+            sleep 2
+            continue
         fi
         share=$(cat "$tmpdir/share.html")
     else
@@ -139,6 +149,55 @@ echo "Segments: $segments"
 duration=$(awk -F'[:,]' '/^#EXTINF/ {s += $2} END {printf "%.2f", s}' "$tmpdir/play.m3u8")
 echo "Duration: ${duration}s"
 
+# 4b. In remote mode, route the AES key + every segment through the public proxy
+#     (ProxyPublicRestService at /services/apexrest/get) so ffmpeg's outbound fetches
+#     originate from Salesforce instead of this (geo-blocked) machine. ffmpeg's command
+#     is unchanged; only the playlist URLs it reads are rewritten. The saved playlist
+#     above stays direct (no embedded API key); the proxied copy lives only in $tmpdir.
+ffInput="$tmpdir/play.m3u8"
+if [ "$REMOTE" = "1" ]; then
+    apiKey=$(sf data query \
+        -q "SELECT Value__c FROM Config_Item__c WHERE Path__c = '/API/MyPIM/key'" \
+        -o "$fetchAlias" --json | jq -r '.result.records[0].Value__c')
+    if [ -z "$apiKey" ] || [ "$apiKey" = "null" ]; then
+        echo 'Could not read /API/MyPIM/key from Config_Item__c'
+        exit 1
+    fi
+
+    # Wrap the EXT-X-KEY URI and every segment URL in the proxy. apiKey is passed as an
+    # argv (not interpolated) and URLs are percent-encoded so they survive the query string.
+    python3 - "$tmpdir/play.m3u8" "$tmpdir/play.proxy.m3u8" "$apiKey" <<'PY'
+import sys, re, urllib.parse
+
+src, dst, key = sys.argv[1], sys.argv[2], sys.argv[3]
+PROXY = 'https://mypim.my.salesforce-sites.com/public/services/apexrest/get'
+
+def wrap(url):
+    return PROXY + '?key=' + urllib.parse.quote(key, safe='') + '&url=' + urllib.parse.quote(url, safe='')
+
+out = []
+with open(src, encoding='utf-8') as f:
+    for line in f:
+        line = line.rstrip('\n')
+        if line.startswith('#EXT-X-KEY'):
+            m = re.search(r'URI="([^"]+)"', line)
+            if m:
+                line = line[:m.start(1)] + wrap(m.group(1)) + line[m.end(1):]
+        elif line and not line.startswith('#'):
+            line = wrap(line)
+        out.append(line)
+
+with open(dst, 'w', encoding='utf-8') as f:
+    f.write('\n'.join(out) + '\n')
+PY
+    if [ $? -ne 0 ] || [ ! -s "$tmpdir/play.proxy.m3u8" ]; then
+        echo 'Failed to rewrite playlist through the proxy'
+        exit 1
+    fi
+    ffInput="$tmpdir/play.proxy.m3u8"
+    echo "Proxied:  routing key + segments through the public proxy (compute automation)"
+fi
+
 # 5. Download + decrypt + mux (lossless copy)
 tmp720="$tmpdir/raw.mp4"
 echo "Downloading and decrypting..."
@@ -149,7 +208,7 @@ echo "Downloading and decrypting..."
 ffmpeg_progress "$duration" \
     -allowed_extensions ALL \
     -protocol_whitelist file,http,https,tcp,tls,crypto \
-    -i "$tmpdir/play.m3u8" \
+    -i "$ffInput" \
     -c copy -bsf:a aac_adtstoasc \
     "$tmp720"
 if [ $? -ne 0 ] || [ ! -f "$tmp720" ]; then

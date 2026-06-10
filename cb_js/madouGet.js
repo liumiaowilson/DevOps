@@ -17,6 +17,12 @@
     const headers = { 'User-Agent': USER_AGENT };
     if(referer) headers['Referer'] = referer;
 
+    // Percent-encode non-ASCII path chars (e.g. the Chinese movie slug). curl does this
+    // implicitly, but the compute server's Node http client rejects an unescaped path
+    // ("Request path contains unescaped characters"). encodeURI leaves the scheme/host and
+    // reserved chars (/, ?, &, =) intact, so ASCII share/playlist URLs are unaffected.
+    const safeUrl = encodeURI(url);
+
     // Fetch the URL server-side via the org's /computeAutomation REST resource
     // (ComputeAutomationRestService -> GComputeService.runComputeScript) so the HTTP
     // callout originates from Salesforce, not this machine — bypassing the local network
@@ -28,7 +34,9 @@ const axios = require('axios');
 (function() {
     return axios.get($data.url, {
         headers: $data.headers,
-        timeout: 30000,
+        // dash.madou.club can be slow from the compute server's location; keep this well
+        // under GComputeService.runComputeScript's 120s Apex-callout timeout.
+        timeout: 90000,
         validateStatus: () => true,
     }).then(resp => ({
         status: resp.status,
@@ -40,7 +48,7 @@ const axios = require('axios');
     return (async () => {
         const raw = await context.mypim.apex.post('/computeAutomation', {
             code: REMOTE_GET_SCRIPT,
-            data: JSON.stringify({ url, headers }),
+            data: JSON.stringify({ url: safeUrl, headers }),
         });
         const envelope = typeof raw === 'string' ? JSON.parse(raw) : raw;
         if(!envelope || envelope.success === false) {

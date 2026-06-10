@@ -1,9 +1,10 @@
 # {
 #   "name": "download_madou",
-#   "description": "Download a madou.club video by page URL, decrypt the HLS (AES-128) stream, and downscale to 480p",
-#   "usage": "dev download_madou <https://madou.club/<name>.html>"
+#   "description": "Download a madou.club video by page URL, decrypt the HLS (AES-128) stream, and downscale to 480p. Pass 'remote' to route madou page/share/playlist fetches through compute automation",
+#   "usage": "dev download_madou <https://madou.club/<name>.html> [remote]"
 # }
 url=$1
+mode=$2                         # optional: 'remote' to route madou page fetches through compute automation
 
 if [ -z "$url" ]; then
     echo 'Page URL is required (e.g. https://madou.club/<name>.html)'
@@ -13,6 +14,21 @@ fi
 echo "Page:     $url"
 
 UA="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+
+# 'remote' routes the madou page / share page / playlist fetches through the org's
+# /computeAutomation endpoint (which runs from a non-geo-blocked location), mirroring
+# save_madou_movie.js's remote mode. The .ts segment downloads stay direct via ffmpeg
+# (NOT routed remote). When direct, the original curl path is used unchanged.
+REMOTE=0
+[ "$mode" = "remote" ] && REMOTE=1
+fetchAlias=${DefaultAlias:-mypim}
+
+# Fetch a madou page/playlist via compute automation, writing the body to $2 and echoing
+# the HTTP status code (so callers can branch, e.g. the playlist token-expiry retry).
+# Args: url, outFile, [referer]. Returns non-zero only on a hard (script-level) failure.
+madou_remote_get() {
+    sf mypim run script -o "$fetchAlias" -f "$HOME/DevOps/cb_js/madouGet.js" "$1" "$2" "$3"
+}
 
 # Run ffmpeg with a live "percent + ETA" line. Args: total duration in seconds, then ffmpeg args.
 ffmpeg_progress() {
@@ -37,6 +53,9 @@ BASE="https://dash.madou.club"
 OUTDIR="$HOME/Downloads/madou"
 mkdir -p "$OUTDIR/playlists" "$OUTDIR/movies"
 
+tmpdir=$(mktemp -d)
+trap 'rm -rf "$tmpdir"' EXIT
+
 # 1. Movie name from the URL slug (percent-decoded), sanitized for the filesystem
 slug=$(basename "$url" .html)
 movie=$(printf '%b' "${slug//%/\\x}")
@@ -44,7 +63,15 @@ movie=${movie//\//-}
 echo "Movie:    $movie"
 
 # 2. Fetch the page and find the player iframe -> video id
-page=$(curl -s -A "$UA" "$url")
+if [ "$REMOTE" = "1" ]; then
+    if ! madou_remote_get "$url" "$tmpdir/page.html" >/dev/null; then
+        echo 'Could not fetch the page via compute automation'
+        exit 1
+    fi
+    page=$(cat "$tmpdir/page.html")
+else
+    page=$(curl -s -A "$UA" "$url")
+fi
 shareUrl=$(printf '%s' "$page" | grep -oE 'https?://dash\.madou\.club/share/[a-f0-9]+' | head -1)
 if [ -z "$shareUrl" ]; then
     sharePath=$(printf '%s' "$page" | grep -oE 'dash\.madou\.club/share/[a-f0-9]+' | head -1)
@@ -61,13 +88,19 @@ echo "Video ID: $videoId"
 #    fetch the playlist while the token is valid. The token can expire or be
 #    rejected (HTTP 404 "对不起，您没有权限"), so retry the whole share->playlist
 #    fetch with a fresh token each attempt.
-tmpdir=$(mktemp -d)
-trap 'rm -rf "$tmpdir"' EXIT
 segBase="${BASE}/videos/${videoId}"
 maxAttempts=5
 attempt=1
 while :; do
-    share=$(curl -s -A "$UA" "$shareUrl")
+    if [ "$REMOTE" = "1" ]; then
+        if ! madou_remote_get "$shareUrl" "$tmpdir/share.html" >/dev/null; then
+            echo 'Could not fetch the share page via compute automation'
+            exit 1
+        fi
+        share=$(cat "$tmpdir/share.html")
+    else
+        share=$(curl -s -A "$UA" "$shareUrl")
+    fi
     token=$(printf '%s' "$share" | grep -oE 'var token = "[^"]*"' | sed -E 's/var token = "([^"]*)"/\1/')
     m3u8path=$(printf '%s' "$share" | grep -oE "var m3u8 = '[^']+'" | sed -E "s/var m3u8 = '([^']+)'/\1/")
     if [ -z "$m3u8path" ]; then
@@ -78,7 +111,11 @@ while :; do
     [ -n "$token" ] && playlistUrl="${playlistUrl}?token=${token}"
 
     # segment names to absolute URLs (key + segments are public, no token needed)
-    httpCode=$(curl -s -A "$UA" -e "$shareUrl" "$playlistUrl" -o "$tmpdir/orig.m3u8" -w '%{http_code}')
+    if [ "$REMOTE" = "1" ]; then
+        httpCode=$(madou_remote_get "$playlistUrl" "$tmpdir/orig.m3u8" "$shareUrl" | tail -n1 | tr -dc '0-9')
+    else
+        httpCode=$(curl -s -A "$UA" -e "$shareUrl" "$playlistUrl" -o "$tmpdir/orig.m3u8" -w '%{http_code}')
+    fi
     if [ "$httpCode" = "200" ]; then
         break
     fi

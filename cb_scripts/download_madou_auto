@@ -1,10 +1,11 @@
 # {
 #   "name": "download_madou_auto",
-#   "description": "Process the oldest N Pending MadouQueueItem CustomData records from the mypim org: for each, build the madou page URL from Question__c, run dev download_madou on it, and mark the record Username__c='Done' on success. Aborts when the queue is empty or a step fails.",
-#   "usage": "dev download_madou_auto [N]"
+#   "description": "Process the oldest N Pending MadouQueueItem CustomData records from the mypim org: for each, build the madou page URL from Question__c, run dev download_madou on it, and mark the record Username__c='Done' on success. Aborts when the queue is empty or a step fails. Pass 'remote' to route madou page fetches through compute automation.",
+#   "usage": "dev download_madou_auto [N] [remote]"
 # }
 alias=mypim
 N=${1:-1}
+mode=$2                         # optional: 'remote' to route madou page fetches through compute automation
 
 if ! [[ "$N" =~ ^[1-9][0-9]*$ ]]; then
     echo "Error: N must be a positive integer (got: '$N')"
@@ -64,7 +65,7 @@ while [ "$i" -lt "$N" ]; do
 
     madou_url="https://madou.club/${madou_name}.html"
 
-    if ! sh "$ScriptsDir/download_madou" "$madou_url"; then
+    if ! sh "$ScriptsDir/download_madou" "$madou_url" "$mode"; then
         echo "download_madou failed for $madou_url; aborting (record kept)."
         exit 1
     fi

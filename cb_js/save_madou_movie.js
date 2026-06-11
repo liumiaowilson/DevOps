@@ -370,6 +370,7 @@ const axios = require('axios');
             context.ux.action.start('Creating Movie record');
             const created = await withRetry('Create Movie record', () => context.mypim.sobject('Item__c').create({
                 Name: truncateForRecordName(fileName),
+                External_Id__c: fileName,
                 Type__c: 'Movie',
                 Extension__c: MOVIE_ROOT + '/' + movieBaseName + '.mp4',
                 File_1__c: file1,

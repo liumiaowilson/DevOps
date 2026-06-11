@@ -1,15 +1,14 @@
 # {
 #   "name": "save_madou_movie",
 #   "description": "Scrape the madou poster for a downloaded movie, upload it to pCloud, summarize/describe/probe the local file, and create a Movie Item__c record. Pass 'remote' to route madou requests through compute automation",
-#   "usage": "dev save_madou_movie <path/to/movie.mp4> [remote] [alias]"
+#   "usage": "dev save_madou_movie <path/to/movie.mp4> [remote]"
 # }
 filePath=$1
 mode=$2                         # optional: 'remote' to use compute automation for madou requests
-alias=${3:-$DefaultAlias}
 
 if [ -z "$filePath" ]; then
     echo 'Movie file path is required'
     exit 1
 fi
 
-sf mypim run script -o "$alias" -f ~/DevOps/cb_js/save_madou_movie.js "$filePath" "$mode"
+sf mypim run script -o mypim -f ~/DevOps/cb_js/save_madou_movie.js "$filePath" "$mode"

@@ -153,6 +153,37 @@ const axios = require('axios');
         return poster;
     };
 
+    // Decode the handful of HTML entities xvideos titles carry so the stored Name reads
+    // naturally (e.g. &amp; -> &, &#39; -> ').
+    const decodeEntities = s => String(s)
+        .replace(/&amp;/g, '&')
+        .replace(/&lt;/g, '<')
+        .replace(/&gt;/g, '>')
+        .replace(/&quot;/g, '"')
+        .replace(/&apos;/g, "'")
+        .replace(/&#x27;/gi, "'")
+        .replace(/&#(\d+);/g, (_, n) => String.fromCharCode(parseInt(n, 10)))
+        .replace(/&nbsp;/g, ' ');
+
+    // Pull the movie title from an xvideos watch page. Prefer html5player.setVideoTitle
+    // (the raw title), then og:title, then the <title> tag stripped of its
+    // " - XVIDEOS.COM" suffix. Returns '' if none are present.
+    const extractTitle = html => {
+        let title = '';
+        let m = new RegExp("setVideoTitle\\((['\"])([^'\"]*)\\1\\)").exec(html);
+        if(m) title = m[2];
+        if(!title) {
+            m = /property="og:title"\s+content="([^"]+)"/i.exec(html)
+                || /content="([^"]+)"\s+property="og:title"/i.exec(html);
+            if(m) title = m[1];
+        }
+        if(!title) {
+            m = /<title>([^<]+)<\/title>/i.exec(html);
+            if(m) title = m[1].replace(/\s*-\s*XVIDEOS\.COM.*$/i, '');
+        }
+        return decodeEntities(title).trim();
+    };
+
     // ---- pCloud helpers (mirrors save_madou_movie.js) ----
 
     const getPCloudToken = async () => {
@@ -362,11 +393,16 @@ const axios = require('axios');
             context.ux.action.start('Fetching xvideos page');
             const pageHtml = await xvGetHtml(pageUrl, { 'User-Agent': USER_AGENT, 'Referer': XVIDEOS_REFERER });
             const posterUrl = extractPosterUrl(pageHtml);
+            // Record Name comes from the page's movie title (capped at 80), not the id.
+            // Fall back to the id only if the page exposes no title at all.
+            const movieTitle = extractTitle(pageHtml);
             context.ux.action.stop();
             if(!posterUrl) {
                 throw new Error('Could not find the poster (setThumbUrl169 / og:image) on ' + pageUrl);
             }
             cmd.log('Poster: ' + posterUrl);
+            const recordName = truncateForRecordName(movieTitle || fileName);
+            cmd.log('Title: ' + (movieTitle || '(none found, using id ' + fileName + ')'));
 
             // 6. Download the poster and save it to a tmp folder.
             context.ux.action.start('Downloading poster');
@@ -399,7 +435,7 @@ const axios = require('axios');
             // 8. Create the Movie Item__c record with everything populated.
             context.ux.action.start('Creating Movie record');
             const created = await withRetry('Create Movie record', () => context.mypim.sobject('Item__c').create({
-                Name: truncateForRecordName(fileName),
+                Name: recordName,
                 External_Id__c: fileName,
                 Type__c: 'Movie',
                 Extension__c: MOVIE_ROOT + '/' + movieBaseName + '.mp4',

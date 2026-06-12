@@ -1,0 +1,14 @@
+# {
+#   "name": "save_xvideos_movie",
+#   "description": "Look up the XVideosQueueItem record matching a downloaded movie's filename to recover its page URL, scrape the xvideos poster, upload it to pCloud, summarize/describe/probe the local file, and create a Movie Item__c record (External_Id__c = 'xvideos_<filename>'). Pass 'remote' to route xvideos requests through compute automation",
+#   "usage": "dev save_xvideos_movie <path/to/movie.mp4> [remote]"
+# }
+filePath=$1
+mode=$2                         # optional: 'remote' to use compute automation for xvideos requests
+
+if [ -z "$filePath" ]; then
+    echo 'Movie file path is required'
+    exit 1
+fi
+
+sf mypim run script -o mypim -f ~/DevOps/cb_js/save_xvideos_movie.js "$filePath" "$mode"

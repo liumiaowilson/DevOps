@@ -104,12 +104,17 @@ mkdir -p "$OUTDIR/playlists" "$OUTDIR/movies"
 tmpdir=$(mktemp -d)
 trap 'rm -rf "$tmpdir"' EXIT
 
-# 1. Movie name from the URL slug (e.g. .../video.<id>/no_pulling_out_creampie_),
-#    sanitized for the filesystem and trimmed of trailing underscores.
-slug=$(basename "$url")
-movie=${slug//\//-}
-movie=$(printf '%s' "$movie" | sed -E 's/_+$//')
-[ -z "$movie" ] && movie="$slug"
+# 1. Movie name from the video id in the URL (e.g. .../video.<id>/<slug> -> <id>),
+#    falling back to the sanitized slug when no id is present.
+id=$(printf '%s' "$url" | sed -E 's#.*/video\.([^/?#]+).*#\1#')
+if [ -n "$id" ] && [ "$id" != "$url" ]; then
+    movie="$id"
+else
+    slug=$(basename "$url")
+    movie=${slug//\//-}
+    movie=$(printf '%s' "$movie" | sed -E 's/_+$//')
+    [ -z "$movie" ] && movie="$slug"
+fi
 echo "Movie:    $movie"
 
 # Extract the single/double-quoted argument of an html5player.<setter>(...) call

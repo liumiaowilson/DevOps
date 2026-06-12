@@ -1,0 +1,301 @@
+# {
+#   "name": "download_xvideos",
+#   "description": "Download an xvideos.com video by page URL, fetch its HLS stream (variant nearest 480p), and downscale to 480p. Pass 'remote' to route the page/playlist/segment fetches through compute automation",
+#   "usage": "dev download_xvideos <https://www.xvideos.com/video.<id>/<slug>> [remote]"
+# }
+url=$1
+mode=$2                         # optional: 'remote' to route fetches through compute automation
+
+if [ -z "$url" ]; then
+    echo 'Page URL is required (e.g. https://www.xvideos.com/video.<id>/<slug>)'
+    exit 0
+fi
+
+echo "Page:     $url"
+
+UA="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+REFERER="https://www.xvideos.com/"
+
+# 'remote' routes the page / playlist fetches through the org's /computeAutomation endpoint
+# (which runs from a non-geo-blocked location) via the generic madouGet.js helper, and routes
+# ffmpeg's segment downloads through the public proxy. When direct, plain curl + ffmpeg are used.
+REMOTE=0
+[ "$mode" = "remote" ] && REMOTE=1
+# The remote path is entirely mypim-bound (the /computeAutomation endpoint, the public proxy
+# site, and the '/API/MyPIM/key' Config_Item__c all live in the mypim org). Pin to it rather
+# than the user's default org which lacks these records.
+fetchAlias=mypim
+
+# Fetch a URL via compute automation, writing the body to $2. Args: url, outFile, [referer].
+xv_remote_get() {
+    sf mypim run script -o "$fetchAlias" -f "$HOME/DevOps/cb_js/madouGet.js" "$1" "$2" "$3"
+}
+
+# Fetch a URL (page or playlist) to a file, honoring REMOTE. Args: url, outFile, [referer].
+fetch_to() {
+    if [ "$REMOTE" = "1" ]; then
+        xv_remote_get "$1" "$2" "$3" >/dev/null
+    else
+        curl -s -A "$UA" -e "${3:-$REFERER}" "$1" -o "$2"
+    fi
+}
+
+# Pick the variant URI whose vertical resolution is closest to 480 from a master
+# playlist file ($1) — we downscale to 480p anyway, so grabbing a ~480p source
+# (rather than 1080p) saves bandwidth. Ties prefer the higher resolution. Variants
+# with no RESOLUTION tag fall back to highest BANDWIDTH. BSD-awk safe.
+pick_variant_near_480() {
+    awk '
+        /^#EXT-X-STREAM-INF/ {
+            line = $0; h = 0; bw = 0
+            if (match(line, /RESOLUTION=[0-9]+x[0-9]+/)) {
+                res = substr(line, RSTART, RLENGTH); sub(/RESOLUTION=[0-9]+x/, "", res); h = res + 0
+            }
+            if (match(line, /BANDWIDTH=[0-9]+/)) {
+                bw = substr(line, RSTART + 10, RLENGTH - 10) + 0
+            }
+            getline uri
+            if (h > 0) {
+                d = h - 480; if (d < 0) d = -d
+                if (best == "" || d < bestDiff || (d == bestDiff && h > bestH)) {
+                    bestDiff = d; bestH = h; best = uri
+                }
+            } else if (fbBest == "" || bw > fbBw) {
+                fbBw = bw; fbBest = uri
+            }
+        }
+        END { if (best != "") print best; else if (fbBest != "") print fbBest }
+    ' "$1"
+}
+
+# Resolve a (possibly relative) playlist/segment ref against a base URL. Args: baseUrl, ref.
+resolve_url() {
+    local base="$1" ref="$2"
+    case "$ref" in
+        http://*|https://*) printf '%s' "$ref" ;;
+        /*) printf '%s%s' "$(printf '%s' "$base" | sed -E 's#^(https?://[^/]+).*#\1#')" "$ref" ;;
+        *)  printf '%s/%s' "${base%/*}" "$ref" ;;
+    esac
+}
+
+# Run ffmpeg with a live "percent + ETA" line. Args: total duration in seconds, then ffmpeg args.
+ffmpeg_progress() {
+    local total=$1; shift
+    ffmpeg -y -loglevel warning -nostats -progress pipe:1 "$@" |
+    awk -F'=' -v total="$total" '
+        $1 == "out_time_us" { cur = $2 / 1000000 }
+        $1 == "speed" {
+            spd = $2 + 0
+            pct = total > 0 ? cur / total * 100 : 0
+            if (pct > 100) pct = 100
+            eta = (spd > 0 && total > cur) ? (total - cur) / spd : 0
+            printf "\r  %5.1f%%  ETA %02d:%02d  (%sx) ", pct, eta / 60, eta % 60, spd
+            fflush()
+        }
+        $1 == "progress" && $2 == "end" { printf "\r  100.0%%  ETA 00:00            " }
+        END { printf "\n" }
+    '
+    return ${PIPESTATUS[0]}
+}
+
+OUTDIR="$HOME/Downloads/xvideos"
+mkdir -p "$OUTDIR/playlists" "$OUTDIR/movies"
+
+tmpdir=$(mktemp -d)
+trap 'rm -rf "$tmpdir"' EXIT
+
+# 1. Movie name from the URL slug (e.g. .../video.<id>/no_pulling_out_creampie_),
+#    sanitized for the filesystem and trimmed of trailing underscores.
+slug=$(basename "$url")
+movie=${slug//\//-}
+movie=$(printf '%s' "$movie" | sed -E 's/_+$//')
+[ -z "$movie" ] && movie="$slug"
+echo "Movie:    $movie"
+
+# Extract the single/double-quoted argument of an html5player.<setter>(...) call
+# from $page, with xvideos' escaped slashes (https:\/\/) unescaped. Args: setter name.
+player_arg() {
+    local v
+    v=$(printf '%s' "$page" | grep -oE "html5player\.$1\('[^']*'\)" | head -1 | sed -E "s/.*$1\('([^']*)'\).*/\1/")
+    [ -z "$v" ] && v=$(printf '%s' "$page" | grep -oE "html5player\.$1\(\"[^\"]*\"\)" | head -1 | sed -E "s/.*$1\(\"([^\"]*)\"\).*/\1/")
+    printf '%s' "${v//\\\//\/}"
+}
+
+# URL-encode a string for the proxy query (used by remote MP4 mode).
+enc() { python3 -c 'import sys,urllib.parse;print(urllib.parse.quote(sys.argv[1],safe=""))' "$1"; }
+
+# 2. Fetch the page.
+if [ "$REMOTE" = "1" ]; then
+    if ! xv_remote_get "$url" "$tmpdir/page.html" "$REFERER" >/dev/null; then
+        echo 'Could not fetch the page via compute automation'
+        exit 1
+    fi
+    page=$(cat "$tmpdir/page.html")
+else
+    page=$(curl -s -A "$UA" -e "$REFERER" "$url")
+fi
+
+# 3. Resolve a source. Prefer the adaptive HLS master (setVideoHLS); when xvideos
+#    omits it (current pages often do), fall back to a progressive MP4 — the
+#    high-quality setter if present, else the signed MP4 in the JSON-LD contentUrl
+#    (the only media many pages now expose), else the low-quality setter.
+hlsUrl=$(player_arg setVideoHLS)
+mp4High=$(player_arg setVideoUrlHigh)
+mp4Low=$(player_arg setVideoUrlLow)
+mp4Json=$(printf '%s' "$page" | grep -oE '"contentUrl"[[:space:]]*:[[:space:]]*"[^"]+"' | head -1 | sed -E 's/.*"contentUrl"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/')
+mp4Json=${mp4Json//\\\//\/}
+
+if [ -n "$hlsUrl" ]; then
+    SRC_KIND=hls
+    echo "HLS:      $hlsUrl"
+else
+    SRC_KIND=mp4
+    mp4Url="$mp4High"; [ -z "$mp4Url" ] && mp4Url="$mp4Json"; [ -z "$mp4Url" ] && mp4Url="$mp4Low"
+    case "$mp4Url" in /*) mp4Url="https://www.xvideos.com$mp4Url" ;; esac
+    if [ -z "$mp4Url" ]; then
+        echo 'Could not find an HLS stream or a progressive MP4 on the page'
+        echo '(xvideos may be serving a degraded response from this network — try "remote" mode)'
+        exit 1
+    fi
+    echo "MP4:      $mp4Url"
+fi
+
+# In remote mode, read the proxy API key once up front (both source kinds need it).
+if [ "$REMOTE" = "1" ]; then
+    apiKey=$(sf data query \
+        -q "SELECT Value__c FROM Config_Item__c WHERE Path__c = '/API/MyPIM/key'" \
+        -o "$fetchAlias" --json | jq -r '.result.records[0].Value__c')
+    if [ -z "$apiKey" ] || [ "$apiKey" = "null" ]; then
+        echo 'Could not read /API/MyPIM/key from Config_Item__c'
+        exit 1
+    fi
+    PROXY='https://mypim.my.salesforce-sites.com/public/services/apexrest/get'
+fi
+
+# 4. Build the ffmpeg input + a duration estimate for the progress bar.
+inputArgs=()
+if [ "$SRC_KIND" = "hls" ]; then
+    # HLS-demuxer options: allow non-standard segment extensions + the file/crypto
+    # protocols the local (proxied) playlist and any AES key need.
+    inputArgs+=(-allowed_extensions ALL -protocol_whitelist file,http,https,tcp,tls,crypto,httpproxy)
+    # Fetch the playlist. If it's a master (has EXT-X-STREAM-INF), pick the variant
+    # nearest 480p and fetch that; otherwise the HLS URL is itself the media playlist.
+    if ! fetch_to "$hlsUrl" "$tmpdir/hls.m3u8" "$url" || [ ! -s "$tmpdir/hls.m3u8" ]; then
+        echo 'Could not fetch the HLS playlist'
+        exit 1
+    fi
+    if grep -q 'EXT-X-STREAM-INF' "$tmpdir/hls.m3u8"; then
+        variantRef=$(pick_variant_near_480 "$tmpdir/hls.m3u8")
+        if [ -z "$variantRef" ]; then
+            echo 'Could not select a variant from the master playlist'
+            exit 1
+        fi
+        mediaUrl=$(resolve_url "$hlsUrl" "$variantRef")
+        if ! fetch_to "$mediaUrl" "$tmpdir/media.m3u8" "$url" || [ ! -s "$tmpdir/media.m3u8" ]; then
+            echo 'Could not fetch the variant playlist'
+            exit 1
+        fi
+    else
+        mediaUrl="$hlsUrl"
+        cp "$tmpdir/hls.m3u8" "$tmpdir/media.m3u8"
+    fi
+    echo "Stream:   $mediaUrl"
+
+    # Save a copy of the media playlist; report segment count + duration.
+    playlist="$OUTDIR/playlists/${movie}.m3u8"
+    cp "$tmpdir/media.m3u8" "$playlist"
+    echo "Playlist: $playlist"
+    echo "Segments: $(grep -cE '\.ts' "$tmpdir/media.m3u8")"
+    duration=$(awk -F'[:,]' '/^#EXTINF/ {s += $2} END {printf "%.2f", s}' "$tmpdir/media.m3u8")
+    if [ -z "$duration" ] || [ "$duration" = "0.00" ]; then
+        duration=$(ffprobe -v error -show_entries format=duration -of csv=p=0 "$mediaUrl" 2>/dev/null)
+    fi
+
+    if [ "$REMOTE" = "1" ]; then
+        # Resolve every segment (and any EXT-X-KEY URI) to an absolute URL against the
+        # media playlist URL, then wrap each in the proxy. apiKey is passed as argv.
+        python3 - "$tmpdir/media.m3u8" "$tmpdir/play.proxy.m3u8" "$apiKey" "$mediaUrl" "$PROXY" <<'PY'
+import sys, re, urllib.parse
+
+src, dst, key, base, proxy = sys.argv[1:6]
+
+def absolutize(ref):
+    return ref if re.match(r'https?://', ref) else urllib.parse.urljoin(base, ref)
+
+def wrap(url):
+    return proxy + '?key=' + urllib.parse.quote(key, safe='') + '&url=' + urllib.parse.quote(absolutize(url), safe='')
+
+out = []
+with open(src, encoding='utf-8') as f:
+    for line in f:
+        line = line.rstrip('\n')
+        if line.startswith('#EXT-X-KEY'):
+            m = re.search(r'URI="([^"]+)"', line)
+            if m:
+                line = line[:m.start(1)] + wrap(m.group(1)) + line[m.end(1):]
+        elif line and not line.startswith('#'):
+            line = wrap(line)
+        out.append(line)
+
+with open(dst, 'w', encoding='utf-8') as f:
+    f.write('\n'.join(out) + '\n')
+PY
+        if [ $? -ne 0 ] || [ ! -s "$tmpdir/play.proxy.m3u8" ]; then
+            echo 'Failed to rewrite playlist through the proxy'
+            exit 1
+        fi
+        ffInput="$tmpdir/play.proxy.m3u8"
+        echo "Proxied:  routing segments through the public proxy (compute automation)"
+    else
+        inputArgs+=(-user_agent "$UA" -headers $'Referer: https://www.xvideos.com/\r\n' -reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5)
+        ffInput="$mediaUrl"
+    fi
+else
+    # Progressive MP4. Direct mode streams the signed CDN URL; remote mode wraps it in
+    # the public proxy so the fetch originates from Salesforce.
+    if [ "$REMOTE" = "1" ]; then
+        ffInput="${PROXY}?key=$(enc "$apiKey")&url=$(enc "$mp4Url")"
+        echo "Proxied:  routing the MP4 through the public proxy (compute automation)"
+    else
+        ffInput="$mp4Url"
+    fi
+    inputArgs+=(-user_agent "$UA" -headers $'Referer: https://www.xvideos.com/\r\n' -reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5)
+    duration=$(ffprobe -v error -show_entries format=duration -of csv=p=0 "$ffInput" 2>/dev/null)
+fi
+echo "Duration: ${duration:-?}s"
+
+# 5. Download + mux (lossless copy).
+tmpraw="$tmpdir/raw.mp4"
+echo "Downloading..."
+ffmpeg_progress "${duration:-0}" \
+    "${inputArgs[@]}" \
+    -i "$ffInput" \
+    -c copy -bsf:a aac_adtstoasc \
+    "$tmpraw"
+if [ $? -ne 0 ] || [ ! -f "$tmpraw" ]; then
+    echo 'Download failed'
+    exit 1
+fi
+
+# 6. Final file: cap height at 480p without ever upscaling. Sources already <=480p
+#    (e.g. the 360p contentUrl MP4) are kept as-is via a lossless copy.
+out="$OUTDIR/movies/${movie}.mp4"
+height=$(ffprobe -v error -select_streams v:0 -show_entries stream=height -of csv=p=0 "$tmpraw" 2>/dev/null)
+if [ -n "$height" ] && [ "$height" -gt 480 ] 2>/dev/null; then
+    echo "Downscaling ${height}p -> 480p -> $out"
+    rawDuration=$(ffprobe -v error -show_entries format=duration -of csv=p=0 "$tmpraw")
+    ffmpeg_progress "${rawDuration:-${duration:-0}}" \
+        -i "$tmpraw" \
+        -vf scale=-2:480 -c:v libx264 -crf 23 -preset veryfast \
+        -c:a aac -b:a 128k \
+        "$out"
+    if [ $? -ne 0 ] || [ ! -f "$out" ]; then
+        echo 'Downscale failed'
+        exit 1
+    fi
+else
+    echo "Source is ${height:-?}p (<=480p) — keeping as-is -> $out"
+    cp "$tmpraw" "$out"
+fi
+
+echo "Done: $out"

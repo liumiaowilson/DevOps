@@ -1,0 +1,88 @@
+# {
+#   "name": "download_xvideos_auto",
+#   "description": "Process the oldest N Pending XVideosQueueItem CustomData records from the mypim org: for each, take the xvideos page URL from Question__c, run dev download_xvideos on it, and mark the record Username__c='Done' on success. Aborts when the queue is empty or a step fails. Pass 'remote' to route the page/playlist/segment fetches through compute automation (delegated to download_xvideos).",
+#   "usage": "dev download_xvideos_auto [N] [remote]"
+# }
+alias=mypim
+N=${1:-1}
+mode=$2                         # optional: 'remote' to route fetches through compute automation
+
+if ! [[ "$N" =~ ^[1-9][0-9]*$ ]]; then
+    echo "Error: N must be a positive integer (got: '$N')"
+    exit 1
+fi
+
+# Retry an org/sf operation up to 3 times with a 5s pause between attempts.
+retry() {
+    local attempt=1
+    while :; do
+        "$@" && return 0
+        if [ "$attempt" -ge 3 ]; then
+            return 1
+        fi
+        echo "  Attempt $attempt failed; retrying in 5s..." >&2
+        sleep 5
+        attempt=$((attempt+1))
+    done
+}
+
+queryOldest() {
+    sf data query \
+        -q "SELECT Id, Question__c FROM Item__c WHERE Type__c = 'CustomData' AND Parent__r.Name = 'XVideosQueueItem' AND Username__c = 'Pending' ORDER BY CreatedDate ASC LIMIT 1" \
+        -o "$alias" --json
+}
+
+markDone() {
+    sf data update record -s Item__c -i "$1" -v "Username__c=Done" -o "$alias" --json
+}
+
+i=0
+while [ "$i" -lt "$N" ]; do
+    i=$((i+1))
+    echo "===== [$i/$N] $(date '+%Y-%m-%d %H:%M:%S') ====="
+
+    result=$(retry queryOldest)
+    if [ $? -ne 0 ]; then
+        echo "Query failed after retries; aborting."
+        exit 1
+    fi
+
+    totalSize=$(printf '%s' "$result" | jq -r '.result.totalSize')
+    if [ "$totalSize" = "0" ] || [ -z "$totalSize" ] || [ "$totalSize" = "null" ]; then
+        echo "No more Pending XVideosQueueItem records; done."
+        exit 0
+    fi
+
+    recordId=$(printf '%s' "$result" | jq -r '.result.records[0].Id')
+    xvideos_ref=$(printf '%s' "$result" | jq -r '.result.records[0].Question__c')
+
+    echo "Record:   $recordId"
+
+    if [ -z "$xvideos_ref" ] || [ "$xvideos_ref" = "null" ]; then
+        echo "Record $recordId has an empty xvideos reference; aborting (record kept)."
+        exit 1
+    fi
+
+    # Question__c holds either a full page URL or the bare 'video.<id>/<slug>' path;
+    # normalize a bare path to an absolute xvideos URL.
+    case "$xvideos_ref" in
+        http://*|https://*) xvideos_url="$xvideos_ref" ;;
+        /*)                 xvideos_url="https://www.xvideos.com${xvideos_ref}" ;;
+        *)                  xvideos_url="https://www.xvideos.com/${xvideos_ref}" ;;
+    esac
+
+    sh "$ScriptsDir/download_xvideos" "$xvideos_url" "$mode"
+    dl_rc=$?
+    if [ "$dl_rc" -ne 0 ]; then
+        echo "download_xvideos failed for $xvideos_url; aborting (record kept)."
+        exit 1
+    fi
+
+    if ! retry markDone "$recordId"; then
+        echo "Failed to mark record $recordId Done after retries; aborting."
+        exit 1
+    fi
+    echo "Marked Done: $recordId"
+done
+
+echo "Reached N=$N iterations; stopping."

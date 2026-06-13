@@ -1,10 +1,10 @@
 # {
 #   "name": "download_xvideos",
-#   "description": "Download an xvideos.com video by page URL, fetch its HLS stream (variant nearest 480p), and downscale to 480p. Pass 'remote' to route the page/playlist/segment fetches through compute automation",
+#   "description": "Download an xvideos.com video by page URL, fetch its HLS stream (variant nearest 480p), and downscale to 480p. The page and playlists are ALWAYS fetched via compute automation (so the 480p+ HLS variants are exposed); pass 'remote' to additionally route ffmpeg's segment downloads through the public proxy",
 #   "usage": "dev download_xvideos <https://www.xvideos.com/video.<id>/<slug>> [remote]"
 # }
 url=$1
-mode=$2                         # optional: 'remote' to route fetches through compute automation
+mode=$2                         # optional: 'remote' to also route ffmpeg's segment downloads through the proxy
 
 if [ -z "$url" ]; then
     echo 'Page URL is required (e.g. https://www.xvideos.com/video.<id>/<slug>)'
@@ -16,9 +16,11 @@ echo "Page:     $url"
 UA="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 REFERER="https://www.xvideos.com/"
 
-# 'remote' routes the page / playlist fetches through the org's /computeAutomation endpoint
-# (which runs from a non-geo-blocked location) via the generic madouGet.js helper, and routes
-# ffmpeg's segment downloads through the public proxy. When direct, plain curl + ffmpeg are used.
+# The page and playlist fetches ALWAYS go through the org's /computeAutomation endpoint
+# (which runs from a non-geo-blocked location) via the generic madouGet.js helper — a direct
+# fetch is served a degraded page that omits the HLS master, leaving only the 360p MP4.
+# 'remote' additionally routes ffmpeg's segment downloads through the public proxy; without it,
+# ffmpeg fetches the segments directly (which generally works even when the page fetch doesn't).
 REMOTE=0
 [ "$mode" = "remote" ] && REMOTE=1
 # The remote path is entirely mypim-bound (the /computeAutomation endpoint, the public proxy
@@ -31,13 +33,13 @@ xv_remote_get() {
     sf mypim run script -o "$fetchAlias" -f "$HOME/DevOps/cb_js/madouGet.js" "$1" "$2" "$3"
 }
 
-# Fetch a URL (page or playlist) to a file, honoring REMOTE. Args: url, outFile, [referer].
+# Fetch a playlist to a file. ALWAYS via compute automation, regardless of REMOTE:
+# a direct fetch from a geo-blocked network gets a degraded page/master that omits
+# the HLS variants (only the 360p MP4 survives), so the page and every playlist must
+# be pulled from the non-geo-blocked location to expose the 480p+ streams. Only the
+# segment downloads (ffmpeg, below) still honor REMOTE. Args: url, outFile, [referer].
 fetch_to() {
-    if [ "$REMOTE" = "1" ]; then
-        xv_remote_get "$1" "$2" "$3" >/dev/null
-    else
-        curl -s -A "$UA" -e "${3:-$REFERER}" "$1" -o "$2"
-    fi
+    xv_remote_get "$1" "$2" "$3" >/dev/null
 }
 
 # Pick the variant URI whose vertical resolution is closest to 480 from a master
@@ -129,16 +131,14 @@ player_arg() {
 # URL-encode a string for the proxy query (used by remote MP4 mode).
 enc() { python3 -c 'import sys,urllib.parse;print(urllib.parse.quote(sys.argv[1],safe=""))' "$1"; }
 
-# 2. Fetch the page.
-if [ "$REMOTE" = "1" ]; then
-    if ! xv_remote_get "$url" "$tmpdir/page.html" "$REFERER" >/dev/null; then
-        echo 'Could not fetch the page via compute automation'
-        exit 1
-    fi
-    page=$(cat "$tmpdir/page.html")
-else
-    page=$(curl -s -A "$UA" -e "$REFERER" "$url")
+# 2. Fetch the page. ALWAYS via compute automation (see fetch_to): the page is what
+#    carries the HLS master URL, and a direct geo-blocked fetch omits it, leaving only
+#    the 360p MP4. Pull it from the non-geo-blocked location so the 480p stream is seen.
+if ! xv_remote_get "$url" "$tmpdir/page.html" "$REFERER" >/dev/null; then
+    echo 'Could not fetch the page via compute automation'
+    exit 1
 fi
+page=$(cat "$tmpdir/page.html")
 
 # 3. Resolve a source. Prefer the adaptive HLS master (setVideoHLS); when xvideos
 #    omits it (current pages often do), fall back to a progressive MP4 — the

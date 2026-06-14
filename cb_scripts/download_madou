@@ -133,8 +133,18 @@ while :; do
     token=$(printf '%s' "$share" | grep -oE 'var token = "[^"]*"' | sed -E 's/var token = "([^"]*)"/\1/')
     m3u8path=$(printf '%s' "$share" | grep -oE "var m3u8 = '[^']+'" | sed -E "s/var m3u8 = '([^']+)'/\1/")
     if [ -z "$m3u8path" ]; then
+        # A blocked/empty/expired-token share response yields no m3u8 path; this is the same
+        # kind of transient miss as the HTTP failure below, so retry the whole share fetch
+        # with a fresh token rather than aborting the queue on the first miss.
         echo 'Could not find the m3u8 path on the share page'
-        exit 1
+        if [ "$attempt" -ge "$maxAttempts" ]; then
+            echo "Giving up after $maxAttempts attempts"
+            exit 1
+        fi
+        echo "Retrying the share page ($attempt/$maxAttempts)..."
+        attempt=$((attempt + 1))
+        sleep 2
+        continue
     fi
     playlistUrl="${BASE}${m3u8path}"
     [ -n "$token" ] && playlistUrl="${playlistUrl}?token=${token}"

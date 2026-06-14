@@ -81,9 +81,12 @@ resolve_url() {
 }
 
 # Run ffmpeg with a live "percent + ETA" line. Args: total duration in seconds, then ffmpeg args.
+# If FFMPEG_STDERR_LOG is set, ffmpeg's warnings/errors are captured to that file
+# (synchronously, so callers can grep it afterwards) instead of streaming to the terminal.
 ffmpeg_progress() {
     local total=$1; shift
-    ffmpeg -y -loglevel warning -nostats -progress pipe:1 "$@" |
+    local errlog=${FFMPEG_STDERR_LOG:-/dev/stderr}
+    ffmpeg -y -loglevel warning -nostats -progress pipe:1 "$@" 2>"$errlog" |
     awk -F'=' -v total="$total" '
         $1 == "out_time_us" { cur = $2 / 1000000 }
         $1 == "speed" {
@@ -271,16 +274,52 @@ echo "Duration: ${duration:-?}s"
 
 # 5. Download + mux (lossless copy).
 tmpraw="$tmpdir/raw.mp4"
-echo "Downloading..."
-ffmpeg_progress "${duration:-0}" \
-    "${inputArgs[@]}" \
-    -i "$ffInput" \
-    -c copy -bsf:a aac_adtstoasc \
-    "$tmpraw"
-if [ $? -ne 0 ] || [ ! -f "$tmpraw" ]; then
-    echo 'Download failed'
-    exit 1
-fi
+ffLog="$tmpdir/ffmpeg.log"
+# Markers ffmpeg logs (to stderr, while still exiting 0 under -c copy) when a segment
+# arrives truncated/corrupt: a dropped TLS connection, a short HTTP body, or a mangled
+# MPEG-TS packet. Re-running the download usually pulls a clean copy on a transient hiccup.
+corruptRe='Packet corrupt|corrupt input packet|Stream ends prematurely|IO error: End of file'
+maxDownloadAttempts=10
+dlAttempt=1
+while :; do
+    echo "Downloading... (attempt $dlAttempt/$maxDownloadAttempts)"
+    FFMPEG_STDERR_LOG="$ffLog" ffmpeg_progress "${duration:-0}" \
+        "${inputArgs[@]}" \
+        -i "$ffInput" \
+        -c copy -bsf:a aac_adtstoasc \
+        "$tmpraw"
+    ffStatus=$?
+    # Surface the captured ffmpeg warnings/errors (FFMPEG_STDERR_LOG suppresses the live stream)
+    [ -s "$ffLog" ] && cat "$ffLog" >&2
+
+    if [ "$ffStatus" -ne 0 ] || [ ! -f "$tmpraw" ]; then
+        echo 'Download failed'
+        if [ "$dlAttempt" -ge "$maxDownloadAttempts" ]; then
+            echo "Giving up after $maxDownloadAttempts attempts"
+            exit 1
+        fi
+        echo "Retrying the download ($dlAttempt/$maxDownloadAttempts)..."
+        dlAttempt=$((dlAttempt + 1))
+        sleep 2
+        continue
+    fi
+
+    if grep -qE "$corruptRe" "$ffLog"; then
+        corruptCount=$(grep -cE "$corruptRe" "$ffLog")
+        echo "Detected $corruptCount corrupted packet(s) in the download."
+        if [ "$dlAttempt" -ge "$maxDownloadAttempts" ]; then
+            echo "Still corrupt after $maxDownloadAttempts attempts; keeping the last download."
+            break
+        fi
+        echo "Re-downloading to get a clean copy ($dlAttempt/$maxDownloadAttempts)..."
+        dlAttempt=$((dlAttempt + 1))
+        sleep 2
+        continue
+    fi
+
+    echo "Clean download (no corrupted packets)."
+    break
+done
 
 # 6. Final file: cap height at 480p without ever upscaling. Sources already <=480p
 #    (e.g. the 360p contentUrl MP4) are kept as-is via a lossless copy.

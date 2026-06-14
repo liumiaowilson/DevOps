@@ -34,9 +34,12 @@ madou_remote_get() {
 }
 
 # Run ffmpeg with a live "percent + ETA" line. Args: total duration in seconds, then ffmpeg args.
+# If FFMPEG_STDERR_LOG is set, ffmpeg's warnings/errors are captured to that file
+# (synchronously, so callers can grep it afterwards) instead of streaming to the terminal.
 ffmpeg_progress() {
     local total=$1; shift
-    ffmpeg -y -loglevel warning -nostats -progress pipe:1 "$@" |
+    local errlog=${FFMPEG_STDERR_LOG:-/dev/stderr}
+    ffmpeg -y -loglevel warning -nostats -progress pipe:1 "$@" 2>"$errlog" |
     awk -F'=' -v total="$total" '
         $1 == "out_time_us" { cur = $2 / 1000000 }
         $1 == "speed" {
@@ -200,23 +203,59 @@ fi
 
 # 5. Download + decrypt + mux (lossless copy)
 tmp720="$tmpdir/raw.mp4"
-echo "Downloading and decrypting..."
-# NOTE: no -reconnect* flags here. The input is a local playlist file, so it is
-# opened via the file protocol and ffmpeg (8.x) fatally rejects the http-only
-# reconnect options as unconsumed ("Option reconnect not found"). Each .ts is a
-# separate short GET that the HLS demuxer already retries on its own.
-# httpproxy is whitelisted so ffmpeg can CONNECT-tunnel https segments when http_proxy is set
-# (download_madou_auto's socks/HTTP-bridge remote mode); unused on the direct path.
-ffmpeg_progress "$duration" \
-    -allowed_extensions ALL \
-    -protocol_whitelist file,http,https,tcp,tls,crypto,httpproxy \
-    -i "$ffInput" \
-    -c copy -bsf:a aac_adtstoasc \
-    "$tmp720"
-if [ $? -ne 0 ] || [ ! -f "$tmp720" ]; then
-    echo 'Download failed'
-    exit 1
-fi
+ffLog="$tmpdir/ffmpeg.log"
+# Markers ffmpeg logs (to stderr, while still exiting 0 under -c copy) when a segment
+# arrives truncated/corrupt: a dropped TLS connection, a short HTTP body, or a mangled
+# MPEG-TS packet. Re-running the download usually pulls a clean copy on a transient hiccup.
+corruptRe='Packet corrupt|corrupt input packet|Stream ends prematurely|IO error: End of file'
+maxDownloadAttempts=10
+dlAttempt=1
+while :; do
+    echo "Downloading and decrypting... (attempt $dlAttempt/$maxDownloadAttempts)"
+    # NOTE: no -reconnect* flags here. The input is a local playlist file, so it is
+    # opened via the file protocol and ffmpeg (8.x) fatally rejects the http-only
+    # reconnect options as unconsumed ("Option reconnect not found"). Each .ts is a
+    # separate short GET that the HLS demuxer already retries on its own.
+    # httpproxy is whitelisted so ffmpeg can CONNECT-tunnel https segments when http_proxy is set
+    # (download_madou_auto's socks/HTTP-bridge remote mode); unused on the direct path.
+    FFMPEG_STDERR_LOG="$ffLog" ffmpeg_progress "$duration" \
+        -allowed_extensions ALL \
+        -protocol_whitelist file,http,https,tcp,tls,crypto,httpproxy \
+        -i "$ffInput" \
+        -c copy -bsf:a aac_adtstoasc \
+        "$tmp720"
+    ffStatus=$?
+    # Surface the captured ffmpeg warnings/errors (FFMPEG_STDERR_LOG suppresses the live stream)
+    [ -s "$ffLog" ] && cat "$ffLog" >&2
+
+    if [ "$ffStatus" -ne 0 ] || [ ! -f "$tmp720" ]; then
+        echo 'Download failed'
+        if [ "$dlAttempt" -ge "$maxDownloadAttempts" ]; then
+            echo "Giving up after $maxDownloadAttempts attempts"
+            exit 1
+        fi
+        echo "Retrying the download ($dlAttempt/$maxDownloadAttempts)..."
+        dlAttempt=$((dlAttempt + 1))
+        sleep 2
+        continue
+    fi
+
+    if grep -qE "$corruptRe" "$ffLog"; then
+        corruptCount=$(grep -cE "$corruptRe" "$ffLog")
+        echo "Detected $corruptCount corrupted packet(s) in the download."
+        if [ "$dlAttempt" -ge "$maxDownloadAttempts" ]; then
+            echo "Still corrupt after $maxDownloadAttempts attempts; keeping the last download."
+            break
+        fi
+        echo "Re-downloading to get a clean copy ($dlAttempt/$maxDownloadAttempts)..."
+        dlAttempt=$((dlAttempt + 1))
+        sleep 2
+        continue
+    fi
+
+    echo "Clean download (no corrupted packets)."
+    break
+done
 
 # 6. Downscale to 480p -> final file named after the movie
 out="$OUTDIR/movies/${movie}.mp4"

@@ -68,25 +68,41 @@ movie=$(printf '%b' "${slug//%/\\x}")
 movie=${movie//\//-}
 echo "Movie:    $movie"
 
-# 2. Fetch the page and find the player iframe -> video id
-if [ "$REMOTE" = "1" ]; then
-    if ! madou_remote_get "$url" "$tmpdir/page.html" >/dev/null; then
-        echo 'Could not fetch the page via compute automation'
+# 2. Fetch the page and find the player iframe -> video id.
+#    A transient empty/blocked page response yields no iframe, so retry the whole
+#    fetch+extract a few times (matching the share/playlist/download stages below)
+#    rather than aborting the queue on the first miss.
+maxPageAttempts=5
+pageAttempt=1
+shareUrl=""
+while :; do
+    if [ "$REMOTE" = "1" ]; then
+        if madou_remote_get "$url" "$tmpdir/page.html" >/dev/null; then
+            page=$(cat "$tmpdir/page.html")
+        else
+            echo 'Could not fetch the page via compute automation'
+            page=""
+        fi
+    else
+        page=$(curl -s -A "$UA" "$url")
+    fi
+
+    shareUrl=$(printf '%s' "$page" | grep -oE 'https?://dash\.madou\.club/share/[a-f0-9]+' | head -1)
+    if [ -z "$shareUrl" ]; then
+        sharePath=$(printf '%s' "$page" | grep -oE 'dash\.madou\.club/share/[a-f0-9]+' | head -1)
+        [ -n "$sharePath" ] && shareUrl="https://$sharePath"
+    fi
+    [ -n "$shareUrl" ] && break
+
+    echo 'Could not find the video iframe on the page'
+    if [ "$pageAttempt" -ge "$maxPageAttempts" ]; then
+        echo "Giving up after $maxPageAttempts attempts"
         exit 1
     fi
-    page=$(cat "$tmpdir/page.html")
-else
-    page=$(curl -s -A "$UA" "$url")
-fi
-shareUrl=$(printf '%s' "$page" | grep -oE 'https?://dash\.madou\.club/share/[a-f0-9]+' | head -1)
-if [ -z "$shareUrl" ]; then
-    sharePath=$(printf '%s' "$page" | grep -oE 'dash\.madou\.club/share/[a-f0-9]+' | head -1)
-    [ -n "$sharePath" ] && shareUrl="https://$sharePath"
-fi
-if [ -z "$shareUrl" ]; then
-    echo 'Could not find the video iframe on the page'
-    exit 1
-fi
+    echo "Retrying the page fetch ($pageAttempt/$maxPageAttempts)..."
+    pageAttempt=$((pageAttempt + 1))
+    sleep 2
+done
 videoId=$(basename "$shareUrl")
 echo "Video ID: $videoId"
 

@@ -1,10 +1,13 @@
 # {
 #   "name": "save_madou_movie_auto",
-#   "description": "Iterate top-level files in a folder (alphabetical) and run save_madou_movie for each, aborting on first error. Records progress in a sidecar file so re-running the same folder resumes where it left off. Pass 'remote' to route madou requests through compute automation",
+#   "description": "Iterate top-level files in a folder (alphabetical) and run save_madou_movie for each, retrying each file (same params) on transient failures before aborting. Records progress in a sidecar file so re-running the same folder resumes where it left off. Pass 'remote' to route madou requests through compute automation",
 #   "usage": "dev save_madou_movie_auto <folder> [remote]"
 # }
 dir=$1
 mode=$2                         # optional: 'remote' to use compute automation for madou requests
+
+maxAttempts=3                   # retry save_madou_movie (same params) on transient failures
+retryDelay=5                    # seconds to wait between attempts
 
 if [ -z "$dir" ]; then
     echo 'Folder is required'
@@ -47,8 +50,24 @@ for f in "$absDir"/*; do
 
     echo ""
     echo "[$current/$total] Saving: $f"
-    if ! dev save_madou_movie "$f" "$mode"; then
-        echo "[$current/$total] Failed: $f"
+
+    attempt=1
+    ok=0
+    while [ "$attempt" -le "$maxAttempts" ]; do
+        if [ "$attempt" -gt 1 ]; then
+            echo "[$current/$total] Retry $attempt/$maxAttempts (waiting ${retryDelay}s): $f"
+            sleep "$retryDelay"
+        fi
+        if dev save_madou_movie "$f" "$mode"; then
+            ok=1
+            break
+        fi
+        echo "[$current/$total] Attempt $attempt/$maxAttempts failed: $f"
+        attempt=$((attempt + 1))
+    done
+
+    if [ "$ok" -ne 1 ]; then
+        echo "[$current/$total] Failed after $maxAttempts attempt(s): $f"
         echo "Aborting — save_madou_movie errored out."
         exit 1
     fi

@@ -100,8 +100,8 @@ const axios = require('axios');
 
     // Fetch a madou HTML page, returning the body string. Local axios by default;
     // remote compute automation when invoked with the 'remote' parameter.
-    const madouGetHtml = async (url, headers) => {
-        if(REMOTE) {
+    const madouGetHtml = async (url, headers, useRemote = REMOTE) => {
+        if(useRemote) {
             return runAutomation(REMOTE_GET_SCRIPT, { url, headers });
         }
         const resp = await context.axios.get(url, { headers, timeout: 30000 });
@@ -110,8 +110,8 @@ const axios = require('axios');
 
     // Download a madou image (e.g. the poster). Returns { buffer, contentType }. Local axios
     // by default; remote compute automation when invoked with the 'remote' parameter.
-    const madouDownload = async (url, headers) => {
-        if(REMOTE) {
+    const madouDownload = async (url, headers, useRemote = REMOTE) => {
+        if(useRemote) {
             const result = await runAutomation(REMOTE_IMAGE_SCRIPT, { url, headers });
             return {
                 buffer: Buffer.from(result.data, 'base64'),
@@ -311,76 +311,118 @@ const axios = require('axios');
                 try { fs.rmSync(framesDir, { recursive: true, force: true }); } catch(e) { /* best effort */ }
             }
 
-            // 4. Scrape the poster image URL from the madou page -> dash share iframe.
-            context.ux.action.start('Fetching madou page');
-            const madouUrl = MADOU_BASE + '/' + encodeURIComponent(fileName) + '.html';
-            const pageHtml = await madouGetHtml(madouUrl, { 'User-Agent': USER_AGENT });
-            const shareM = /(https?:)?\/\/dash\.madou\.club\/share\/[a-f0-9]+/i.exec(pageHtml);
-            if(!shareM) {
-                context.ux.action.stop();
-                throw new Error('Could not find the video iframe on ' + madouUrl);
+            // 4-6. Scrape the poster from the madou page -> dash share iframe, download it, and
+            //   upload it to pCloud /MyPIM/Movie_Image/<fileName>.jpg. This is best-effort: the
+            //   share page's poster.jpg can be missing (HTTP 404) or the scrape can come back
+            //   empty, and a missing poster must NOT block the Movie record. Retry the whole
+            //   acquisition a few times for transient hiccups; if direct keeps failing, fall back
+            //   to routing through compute automation ('remote'); if that still fails, skip the
+            //   poster and leave File_1__c unset rather than aborting the save. When the run was
+            //   already invoked in remote mode there is no direct path to fall back from.
+            let file1 = null;
+            // Default the movie path to the raw fileName; when a poster IS uploaded, pCloud may
+            // rewrite the filename and we re-derive this from the stored name below.
+            let movieBaseName = fileName;
+            const maxPosterAttempts = 3;
+            const posterModes = REMOTE ? [ true, ] : [ false, true, ];
+            posterLoop:
+            for(let modeIdx = 0; modeIdx < posterModes.length; modeIdx++) {
+                const useRemote = posterModes[modeIdx];
+                const modeLabel = useRemote ? 'remote' : 'direct';
+                const lastMode = modeIdx === posterModes.length - 1;
+                for(let posterAttempt = 1; posterAttempt <= maxPosterAttempts; posterAttempt++) {
+                    try {
+                        // 4. Scrape the poster image URL from the madou page -> dash share iframe.
+                        context.ux.action.start('Fetching madou page (' + modeLabel + ')');
+                        const madouUrl = MADOU_BASE + '/' + encodeURIComponent(fileName) + '.html';
+                        const pageHtml = await madouGetHtml(madouUrl, { 'User-Agent': USER_AGENT }, useRemote);
+                        const shareM = /(https?:)?\/\/dash\.madou\.club\/share\/[a-f0-9]+/i.exec(pageHtml);
+                        if(!shareM) {
+                            throw new Error('Could not find the video iframe on ' + madouUrl);
+                        }
+                        let shareUrl = shareM[0];
+                        if(shareUrl.startsWith('//')) shareUrl = 'https:' + shareUrl;
+                        context.ux.action.stop();
+                        cmd.log('Share: ' + shareUrl);
+
+                        context.ux.action.start('Fetching share page (' + modeLabel + ')');
+                        const shareHtml = await madouGetHtml(shareUrl, { 'User-Agent': USER_AGENT, 'Referer': madouUrl }, useRemote);
+                        // The DPlayer config on the share page carries the poster, e.g. pic: '/videos/<id>/poster.jpg'
+                        const picM = /pic:\s*['"]([^'"]+)['"]/i.exec(shareHtml);
+                        context.ux.action.stop();
+                        if(!picM) {
+                            throw new Error('Could not find the poster (pic) on the share page ' + shareUrl);
+                        }
+                        let posterUrl = picM[1];
+                        if(posterUrl.startsWith('//')) posterUrl = 'https:' + posterUrl;
+                        else if(posterUrl.startsWith('/')) posterUrl = DASH_BASE + posterUrl;
+                        cmd.log('Poster: ' + posterUrl);
+
+                        // 5. Download the poster and save it to a tmp folder.
+                        context.ux.action.start('Downloading poster (' + modeLabel + ')');
+                        const { buffer: posterBuffer, contentType: posterContentType } = await madouDownload(posterUrl, { 'User-Agent': USER_AGENT, 'Referer': shareUrl }, useRemote);
+                        const localPosterPath = path.join(os.tmpdir(), fileName + '.jpg');
+                        fs.writeFileSync(localPosterPath, posterBuffer);
+                        context.ux.action.stop();
+                        cmd.log('Saved poster locally: ' + localPosterPath);
+
+                        // 6. Upload the poster to pCloud /MyPIM/Movie_Image/<fileName>.jpg
+                        context.ux.action.start('Logging into pCloud');
+                        const accessToken = await getPCloudToken();
+                        context.ux.action.stop();
+
+                        await pcloudCreateFolder(PCLOUD_ROOT, accessToken);
+
+                        context.ux.action.start('Uploading poster to pCloud');
+                        const posterFilename = fileName + '.jpg';
+                        const uploadData = await pcloudUploadFile(PCLOUD_ROOT, posterFilename, posterBuffer, posterContentType, accessToken);
+                        const uploaded = uploadData && uploadData.metadata && uploadData.metadata[0];
+                        file1 = (uploaded && uploaded.path) || (PCLOUD_ROOT + '/' + posterFilename);
+                        // pCloud sometimes rewrites the uploaded filename (sanitizing characters);
+                        // uploaded.name carries the actual stored name. Derive the movie path from it
+                        // so Extension__c matches the same rewrite pCloud applies to the movie file.
+                        const coverFilename = (uploaded && uploaded.name) || posterFilename;
+                        movieBaseName = path.basename(coverFilename, path.extname(coverFilename));
+                        context.ux.action.stop();
+                        cmd.log('Uploaded poster: ' + file1);
+                        break posterLoop;
+                    }
+                    catch(posterErr) {
+                        context.ux.action.stop();
+                        const pm = posterErr.message || String(posterErr);
+                        const lastAttempt = posterAttempt >= maxPosterAttempts;
+                        if(lastAttempt && lastMode) {
+                            cmd.warn('Poster unavailable after ' + maxPosterAttempts + ' ' + modeLabel + ' attempt(s) (' + pm + '); saving Movie without a poster (File_1__c unset).');
+                        }
+                        else if(lastAttempt) {
+                            cmd.log('Poster ' + modeLabel + ' attempts exhausted (' + pm + '); falling back to remote...');
+                        }
+                        else {
+                            cmd.log('Poster ' + modeLabel + ' attempt ' + posterAttempt + '/' + maxPosterAttempts + ' failed (' + pm + '); retrying in ' + RETRY_DELAY_MS + 'ms');
+                            await sleep(RETRY_DELAY_MS);
+                        }
+                    }
+                }
             }
-            let shareUrl = shareM[0];
-            if(shareUrl.startsWith('//')) shareUrl = 'https:' + shareUrl;
-            context.ux.action.stop();
-            cmd.log('Share: ' + shareUrl);
-
-            context.ux.action.start('Fetching share page');
-            const shareHtml = await madouGetHtml(shareUrl, { 'User-Agent': USER_AGENT, 'Referer': madouUrl });
-            // The DPlayer config on the share page carries the poster, e.g. pic: '/videos/<id>/poster.jpg'
-            const picM = /pic:\s*['"]([^'"]+)['"]/i.exec(shareHtml);
-            context.ux.action.stop();
-            if(!picM) {
-                throw new Error('Could not find the poster (pic) on the share page ' + shareUrl);
-            }
-            let posterUrl = picM[1];
-            if(posterUrl.startsWith('//')) posterUrl = 'https:' + posterUrl;
-            else if(posterUrl.startsWith('/')) posterUrl = DASH_BASE + posterUrl;
-            cmd.log('Poster: ' + posterUrl);
-
-            // 5. Download the poster and save it to a tmp folder.
-            context.ux.action.start('Downloading poster');
-            const { buffer: posterBuffer, contentType: posterContentType } = await madouDownload(posterUrl, { 'User-Agent': USER_AGENT, 'Referer': shareUrl });
-            const localPosterPath = path.join(os.tmpdir(), fileName + '.jpg');
-            fs.writeFileSync(localPosterPath, posterBuffer);
-            context.ux.action.stop();
-            cmd.log('Saved poster locally: ' + localPosterPath);
-
-            // 6. Upload the poster to pCloud /MyPIM/Movie_Image/<fileName>.jpg
-            context.ux.action.start('Logging into pCloud');
-            const accessToken = await getPCloudToken();
-            context.ux.action.stop();
-
-            await pcloudCreateFolder(PCLOUD_ROOT, accessToken);
-
-            context.ux.action.start('Uploading poster to pCloud');
-            const posterFilename = fileName + '.jpg';
-            const uploadData = await pcloudUploadFile(PCLOUD_ROOT, posterFilename, posterBuffer, posterContentType, accessToken);
-            const uploaded = uploadData && uploadData.metadata && uploadData.metadata[0];
-            const file1 = (uploaded && uploaded.path) || (PCLOUD_ROOT + '/' + posterFilename);
-            // pCloud sometimes rewrites the uploaded filename (sanitizing characters);
-            // uploaded.name carries the actual stored name. Derive the movie path from it
-            // so Extension__c matches the same rewrite pCloud applies to the movie file.
-            const coverFilename = (uploaded && uploaded.name) || posterFilename;
-            const movieBaseName = path.basename(coverFilename, path.extname(coverFilename));
-            context.ux.action.stop();
-            cmd.log('Uploaded poster: ' + file1);
 
             // 7. Create the Movie Item__c record with everything populated.
             context.ux.action.start('Creating Movie record');
-            const created = await withRetry('Create Movie record', () => context.mypim.sobject('Item__c').create({
+            const movieFields = {
                 Name: truncateForRecordName(fileName),
                 External_Id__c: fileName,
                 Type__c: 'Movie',
                 Extension__c: MOVIE_ROOT + '/' + movieBaseName + '.mp4',
-                File_1__c: file1,
                 Text__c: summary,
                 Description__c: description,
                 Price__c: duration,
                 Password__c: resolution,
                 Show_In_UI__c: true,
                 End_Date__c: new Date().toISOString(),
-            }));
+            };
+            // Only set File_1__c when the poster was successfully uploaded; a skipped poster
+            // leaves it unset rather than pointing at a pCloud file that was never created.
+            if(file1) movieFields.File_1__c = file1;
+            const created = await withRetry('Create Movie record', () => context.mypim.sobject('Item__c').create(movieFields));
             const recordId = created.id || created.Id;
             if(!recordId) throw new Error('Failed to create Movie record');
             context.ux.action.stop();
@@ -408,7 +450,7 @@ const axios = require('axios');
                 cmd.warn('Queue record cleanup failed (Movie was still saved): ' + (err.message || String(err)));
             }
 
-            cmd.logSuccess('Saved "' + fileName + '" — Movie ' + recordId + ', poster ' + file1 + ', ' + duration + 's, ' + resolution);
+            cmd.logSuccess('Saved "' + fileName + '" — Movie ' + recordId + ', poster ' + (file1 || 'none') + ', ' + duration + 's, ' + resolution);
         })().catch(err => {
             context.ux.action.stop();
             let msg = err.message || String(err);

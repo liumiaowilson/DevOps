@@ -1,0 +1,24 @@
+# {
+#   "name": "texeiBuild",
+#   "description": "Compile all practifi component jsons using texei (no delete, no import)",
+#   "usage": "dev texeiBuild [folderName]"
+# }
+repoDir="$(pwd)"
+folderName="$1"
+
+if [ -n "$folderName" ]; then
+    cd $repoDir/data/texei/components
+    echo "⚙️  Compiling components to $folderName..."
+    node compile.js "$folderName"
+else
+    echo "📁 Creating pipeline folder..."
+    mkdir -p $repoDir/data/texei/pipeline
+    echo '{"records":[]}' > $repoDir/data/texei/pipeline/1-practifi__Component__c.json
+    echo '{"records":[]}' > $repoDir/data/texei/pipeline/2-practifi__Component_Relation__c.json
+    cd $repoDir/data/texei/components
+    echo "⚙️  Compiling components..."
+    node compile.js pipeline
+fi
+
+cd $repoDir
+echo "✅ Done!"

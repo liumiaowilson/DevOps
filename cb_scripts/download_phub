@@ -1,6 +1,6 @@
 # {
 #   "name": "download_phub",
-#   "description": "Download a pornhub.com video by view_video URL: resolve its HLS stream (variant nearest 480p) server-side via compute automation, then download and downscale to 480p. The stream is ALWAYS resolved through the org's /computeAutomation endpoint (so the age-gated flashvars + 480p HLS are exposed from a non-blocked location); pass 'remote' to additionally route ffmpeg's segment downloads through the public proxy",
+#   "description": "Download a pornhub.com video by view_video URL: resolve its HLS stream (variant nearest 480p), then download and downscale to 480p. Default resolves the age-gated flashvars + playlists via the org's /computeAutomation endpoint and lets ffmpeg fetch the signed CDN segments directly. Pass 'remote' to route EVERYTHING (page resolve, playlists via curl over a SOCKS5 SSH tunnel; segments via ffmpeg over a local SOCKS5->HTTP bridge to the same tunnel) so the CDN's ipa-bound signatures match the one exit IP. Override proxies via PHUB_SOCKS_PROXY / PHUB_HTTP_PROXY",
 #   "usage": "dev download_phub <https://www.pornhub.com/view_video.php?viewkey=...> [remote]"
 # }
 url=$1
@@ -16,18 +16,48 @@ echo "Page:     $url"
 UA="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 REFERER="https://www.pornhub.com/"
 
-# The stream resolution and every playlist fetch ALWAYS go through the org's
-# /computeAutomation endpoint (which runs from a non-geo-blocked location): the
-# page is age-gated and carries the HLS master inside a flashvars JSON blob, and a
-# direct fetch from this network is blocked outright. 'remote' additionally routes
-# ffmpeg's segment downloads through the public proxy; without it, ffmpeg fetches
-# the (signed CDN) segments directly, which generally works even when the page does not.
+# Default (no 'remote'): the page is age-gated and a direct fetch from this network is
+# blocked, so stream resolution + playlist fetches go through the org's /computeAutomation
+# endpoint (a non-geo-blocked location) and ffmpeg fetches the signed CDN segments directly.
+#
+# 'remote': route EVERYTHING through one SSH dynamic tunnel so the CDN signs the segment
+# URLs (ipa=...) against the same exit IP that fetches them — curl resolves the page +
+# playlists over the SOCKS5 tunnel, and ffmpeg (no native SOCKS) fetches segments via a
+# local SOCKS5->HTTP bridge (privoxy) that forwards to the same tunnel. Resolving on a
+# different IP than the segment fetch yields HTTP 410 Gone, which is why both share it.
 REMOTE=0
 [ "$mode" = "remote" ] && REMOTE=1
-# The remote path is entirely mypim-bound (the /computeAutomation endpoint, the public
-# proxy site, and the '/API/MyPIM/key' Config_Item__c all live in the mypim org). Pin to
-# it rather than the user's default org which lacks these records.
+# Non-remote resolution/playlist fetches are mypim-bound (the /computeAutomation endpoint
+# lives in the mypim org). Pin to it rather than the user's default org.
 fetchAlias=mypim
+# Age-gate cookies so the flashvars blob is present in the page HTML (remote resolve).
+PH_COOKIES='accessAgeDisclaimerPH=1; accessAgeDisclaimerUK=1; age_verified=1; platform=pc'
+
+# Remote-mode proxies (override via env). SOCKS_PROXY is the SSH dynamic tunnel used by curl
+# for the page + playlist fetches; HTTP_PROXY_BRIDGE is a SOCKS5->HTTP bridge (e.g. privoxy
+# 'forward-socks5 / 127.0.0.1:1080 .') used by ffmpeg, which has no native SOCKS support.
+# Both forward through the SAME tunnel, so they share an exit IP.
+SOCKS_PROXY=${PHUB_SOCKS_PROXY:-socks5h://127.0.0.1:1080}
+HTTP_PROXY_BRIDGE=${PHUB_HTTP_PROXY:-http://127.0.0.1:8118}
+# In remote mode, verify both proxies are reachable once up front (fail fast with how to
+# start them) rather than discovering it mid-resolve/-download.
+if [ "$REMOTE" = "1" ]; then
+    echo "Remote mode: curl via SOCKS ($SOCKS_PROXY), ffmpeg via HTTP bridge ($HTTP_PROXY_BRIDGE)"
+    if ! curl -s --max-time 10 -A "$UA" -x "$SOCKS_PROXY" -o /dev/null "$REFERER"; then
+        echo "SOCKS proxy $SOCKS_PROXY is not reachable. Start the SSH tunnel, e.g.:" >&2
+        echo "  ssh -D 1080 -N -C -p 443 root@<host>" >&2
+        exit 1
+    fi
+    if ! curl -s --max-time 10 -A "$UA" -x "$HTTP_PROXY_BRIDGE" -o /dev/null "$REFERER"; then
+        echo "HTTP bridge $HTTP_PROXY_BRIDGE is not reachable. Start privoxy forwarding to the tunnel:" >&2
+        echo "  add 'forward-socks5 / 127.0.0.1:1080 .' to its config (listen 127.0.0.1:8118), then run privoxy" >&2
+        exit 1
+    fi
+    # ffmpeg/ffprobe (no native SOCKS) read http_proxy and CONNECT-tunnel https through the
+    # bridge — same exit IP as the curl resolve, so the ipa-bound CDN signatures stay valid.
+    # curl is unaffected: its explicit -x "$SOCKS_PROXY" overrides this env var.
+    export http_proxy="$HTTP_PROXY_BRIDGE"
+fi
 
 # Fetch a URL via compute automation, writing the body to $2. Args: url, outFile, [referer].
 # Reuses the generic madouGet.js helper (UA + Referer); pornhub's signed CDN playlists
@@ -36,10 +66,17 @@ ph_remote_get() {
     sf mypim run script -o "$fetchAlias" -f "$HOME/DevOps/cb_js/madouGet.js" "$1" "$2" "$3"
 }
 
-# Fetch a playlist to a file. ALWAYS via compute automation (the local network blocks
-# pornhub's CDN); only the segment downloads (ffmpeg, below) honor REMOTE. Args: url, outFile, [referer].
+# Fetch a playlist to a file. In remote mode via curl over the SOCKS tunnel (same exit IP
+# as the segment fetches, so signed playlist/segment URLs stay valid); otherwise via compute
+# automation (the local network blocks pornhub's CDN). Args: url, outFile, [referer].
 fetch_to() {
-    ph_remote_get "$1" "$2" "$3" >/dev/null
+    if [ "$REMOTE" = "1" ]; then
+        local code
+        code=$(curl -s -A "$UA" -e "${3:-$REFERER}" -x "$SOCKS_PROXY" "$1" -o "$2" -w '%{http_code}')
+        [ "$code" = "200" ]
+    else
+        ph_remote_get "$1" "$2" "$3" >/dev/null
+    fi
 }
 
 # Pick the variant URI whose vertical resolution is closest to 480 from a master
@@ -124,113 +161,187 @@ echo "Movie:    $movie"
 # URL-encode a string for the proxy query (used by remote mode).
 enc() { python3 -c 'import sys,urllib.parse;print(urllib.parse.quote(sys.argv[1],safe=""))' "$1"; }
 
-# 2. Resolve the HLS stream. ALWAYS via compute automation: the page is age-gated and
-#    carries the HLS master inside a flashvars blob that a direct (blocked) fetch can't
-#    reach. phubResolve.js parses the flashvars, applies the 480>360>720 quality
-#    preference, and writes {m3u8Url, poster, quality} JSON.
-if ! sf mypim run script -o "$fetchAlias" -f "$HOME/DevOps/cb_js/phubResolve.js" "$url" "$tmpdir/stream.json"; then
-    echo 'Could not resolve the HLS stream via compute automation'
-    echo '(pornhub may be serving a degraded/age-gated response — check the viewkey URL)'
-    exit 1
+# 2. Resolve the media stream from the age-gated flashvars blob (480>360>720 quality pref).
+#    Remote: fetch the page through the SOCKS tunnel SAVING its session cookies (-c jar), then
+#    call the get_media endpoint WITH those cookies — that mints fresh, IP-bound media URLs
+#    against the tunnel exit IP (the same IP ffmpeg fetches from, so the ipa= signatures match).
+#    The inline flashvars m3u8 URLs are skipped: they're commonly stale/cached and 410 for
+#    non-browser clients, and get_media without the session cookies just returns []. Non-remote:
+#    via compute automation. Result may be HLS (.m3u8) or a progressive .mp4 — both are handled.
+if [ "$REMOTE" = "1" ]; then
+    code=$(curl -s -A "$UA" -e "$REFERER" -b "$PH_COOKIES" -c "$tmpdir/cookies.txt" -x "$SOCKS_PROXY" "$url" -o "$tmpdir/page.html" -w '%{http_code}')
+    if [ "$code" != "200" ] || [ ! -s "$tmpdir/page.html" ]; then
+        echo "Could not fetch the video page through the tunnel (HTTP $code)"
+        exit 1
+    fi
+    python3 - "$tmpdir/page.html" > "$tmpdir/resolved.txt" <<'PY'
+import sys, re, json
+html = open(sys.argv[1], encoding='utf-8', errors='replace').read()
+def extract_flashvars(h):
+    m = re.search(r'var\s+flashvars_\w+\s*=\s*\{', h)
+    if not m: return None
+    i = m.end() - 1  # opening brace
+    depth = 0; inStr = False; quote = ''; esc = False
+    for j in range(i, len(h)):
+        c = h[j]
+        if inStr:
+            if esc: esc = False
+            elif c == '\\': esc = True
+            elif c == quote: inStr = False
+            continue
+        if c in '"\'': inStr = True; quote = c; continue
+        if c == '{': depth += 1
+        elif c == '}':
+            depth -= 1
+            if depth == 0:
+                try: return json.loads(h[i:j+1])
+                except Exception: return None
+    return None
+def is_hls(d): return isinstance(d, dict) and str(d.get('format', '')).lower() == 'hls'
+def clean(u): return (u or '').replace('\\/', '/')
+PREF = ['480', '360', '720']
+def qof(d):
+    mm = re.search(r'(\d{3,4})[pP]', d.get('videoUrl') or '')
+    return mm.group(1) if mm else str(d.get('quality') if d.get('quality') is not None else '')
+def pick(lst):
+    for p in PREF:
+        for d in lst:
+            if qof(d) == p: return d
+    return lst[0] if lst else None
+fv = extract_flashvars(html)
+if not fv: print('ERR\tcould not parse flashvars from video page'); sys.exit(0)
+defs = fv.get('mediaDefinitions') or []
+if not defs: print('ERR\tno mediaDefinitions in flashvars'); sys.exit(0)
+# Prefer the get_media hop (with session cookies it mints fresh, working URLs); only fall back
+# to the inline m3u8 entries if there's no get_media endpoint (those are often stale -> 410).
+hop = next((d for d in defs if 'get_media' in (d.get('videoUrl') or '')), None)
+if hop: print('HOP\t%s' % clean(hop.get('videoUrl'))); sys.exit(0)
+directs = [d for d in defs if is_hls(d) and re.search(r'\.m3u8(\?|$)', d.get('videoUrl') or '', re.I)]
+if directs:
+    c = pick(directs); print('DIRECT\t%s\t%s' % (clean(c.get('videoUrl')), qof(c))); sys.exit(0)
+print('ERR\tno resolvable mediaDefinitions entry'); sys.exit(0)
+PY
+    resolved=$(cat "$tmpdir/resolved.txt")
+    if [ "$(printf '%s' "$resolved" | cut -f1)" = "HOP" ]; then
+        hopUrl=$(printf '%s' "$resolved" | cut -f2)
+        # Send the page's session cookies (the jar) + an XHR header + the video page as Referer;
+        # without the session cookies get_media returns an empty list.
+        code=$(curl -s -A "$UA" -e "$url" -b "$tmpdir/cookies.txt" -H 'X-Requested-With: XMLHttpRequest' -x "$SOCKS_PROXY" "$hopUrl" -o "$tmpdir/getmedia.json" -w '%{http_code}')
+        if [ "$code" != "200" ] || [ ! -s "$tmpdir/getmedia.json" ]; then
+            echo "Could not fetch the get_media endpoint through the tunnel (HTTP $code)"
+            exit 1
+        fi
+        python3 - "$tmpdir/getmedia.json" > "$tmpdir/resolved.txt" <<'PY'
+import sys, re, json
+raw = open(sys.argv[1], encoding='utf-8').read()
+try: arr = json.loads(raw)
+except Exception: arr = None
+if isinstance(arr, str):
+    try: arr = json.loads(arr)
+    except Exception: arr = None
+if not isinstance(arr, list) or not arr: print('ERR\tget_media returned no formats'); sys.exit(0)
+def is_hls(d): return isinstance(d, dict) and str(d.get('format', '')).lower() == 'hls'
+def clean(u): return (u or '').replace('\\/', '/')
+PREF = ['480', '360', '720']
+def qof(d):
+    mm = re.search(r'(\d{3,4})[pP]', d.get('videoUrl') or '')
+    return mm.group(1) if mm else str(d.get('quality') if d.get('quality') is not None else '')
+def pick(lst):
+    for p in PREF:
+        for d in lst:
+            if qof(d) == p: return d
+    return lst[0] if lst else None
+hlsArr = [d for d in arr if is_hls(d)]
+c = pick(hlsArr or arr)
+if not c or not c.get('videoUrl'): print('ERR\tno hls url in get_media response'); sys.exit(0)
+print('DIRECT\t%s\t%s' % (clean(c.get('videoUrl')), qof(c)))
+PY
+        resolved=$(cat "$tmpdir/resolved.txt")
+    fi
+    if [ "$(printf '%s' "$resolved" | cut -f1)" != "DIRECT" ]; then
+        echo 'Could not resolve the HLS stream through the tunnel'
+        echo "  $(printf '%s' "$resolved" | cut -f2-)"
+        exit 1
+    fi
+    hlsUrl=$(printf '%s' "$resolved" | cut -f2)
+    quality=$(printf '%s' "$resolved" | cut -f3)
+else
+    if ! sf mypim run script -o "$fetchAlias" -f "$HOME/DevOps/cb_js/phubResolve.js" "$url" "$tmpdir/stream.json"; then
+        echo 'Could not resolve the HLS stream via compute automation'
+        echo '(pornhub may be serving a degraded/age-gated response — check the viewkey URL)'
+        exit 1
+    fi
+    hlsUrl=$(jq -r '.m3u8Url // empty' "$tmpdir/stream.json")
+    quality=$(jq -r '.quality // empty' "$tmpdir/stream.json")
 fi
-hlsUrl=$(jq -r '.m3u8Url // empty' "$tmpdir/stream.json")
-quality=$(jq -r '.quality // empty' "$tmpdir/stream.json")
 if [ -z "$hlsUrl" ]; then
-    echo 'Could not find an HLS stream in the resolver output'
-    echo "  $(cat "$tmpdir/stream.json")"
+    echo 'Could not find a media stream in the resolver output'
+    [ -s "$tmpdir/stream.json" ] && echo "  $(cat "$tmpdir/stream.json")"
     exit 1
 fi
-echo "HLS:      $hlsUrl"
+echo "Source:   $hlsUrl"
 [ -n "$quality" ] && echo "Quality:  ${quality}p (resolver preference)"
 
-# In remote mode, read the proxy API key once up front.
-if [ "$REMOTE" = "1" ]; then
-    apiKey=$(sf data query \
-        -q "SELECT Value__c FROM Config_Item__c WHERE Path__c = '/API/MyPIM/key'" \
-        -o "$fetchAlias" --json | jq -r '.result.records[0].Value__c')
-    if [ -z "$apiKey" ] || [ "$apiKey" = "null" ]; then
-        echo 'Could not read /API/MyPIM/key from Config_Item__c'
-        exit 1
-    fi
-    PROXY='https://mypim.my.salesforce-sites.com/public/services/apexrest/get'
-fi
-
 # 3. Build the ffmpeg input + a duration estimate for the progress bar.
-# HLS-demuxer options: allow non-standard segment extensions + the file/crypto
-# protocols the local (proxied) playlist and any AES key need.
-inputArgs=(-allowed_extensions ALL -protocol_whitelist file,http,https,tcp,tls,crypto,httpproxy)
-# Fetch the playlist. If it's a master (has EXT-X-STREAM-INF), pick the variant
-# nearest 480p and fetch that; otherwise the HLS URL is itself the media playlist.
-if ! fetch_to "$hlsUrl" "$tmpdir/hls.m3u8" "$REFERER" || [ ! -s "$tmpdir/hls.m3u8" ]; then
-    echo 'Could not fetch the HLS playlist'
-    exit 1
-fi
-if grep -q 'EXT-X-STREAM-INF' "$tmpdir/hls.m3u8"; then
-    variantRef=$(pick_variant_near_480 "$tmpdir/hls.m3u8")
-    if [ -z "$variantRef" ]; then
-        echo 'Could not select a variant from the master playlist'
+# Common options for both HLS and progressive inputs: the crypto/httpproxy protocols any AES
+# key and the (remote-mode) bridged GETs need, plus the UA + Referer the CDN requires (it 410s
+# requests lacking either). ffmpeg fetches the playlist/file URL itself over https, so these
+# http options propagate to each HLS segment GET (a rewritten local file:// manifest would NOT).
+inputArgs=(-protocol_whitelist file,http,https,tcp,tls,crypto,httpproxy)
+inputArgs+=(-user_agent "$UA" -headers $'Referer: https://www.pornhub.com/\r\n' -reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5)
+
+# The resolved URL is either an HLS playlist (.m3u8) or a progressive single .mp4 (get_media).
+case "${hlsUrl%%\?*}" in
+    *.m3u8) IS_HLS=1 ;;
+    *)      IS_HLS=0 ;;
+esac
+
+if [ "$IS_HLS" = "1" ]; then
+    # -allowed_extensions ALL / -extension_picky 0 are HLS-demuxer-only options (the mov/mp4
+    # demuxer rejects them with "Option not found"), so add them only on the HLS path.
+    # -extension_picky 0 disables ffmpeg 7.1+'s stricter per-segment extension check, which the
+    # signed CDN segment URLs (long query after the .ts) otherwise trip.
+    inputArgs+=(-allowed_extensions ALL -extension_picky 0)
+    # Fetch the playlist. If it's a master (has EXT-X-STREAM-INF), pick the variant
+    # nearest 480p and fetch that; otherwise the HLS URL is itself the media playlist.
+    if ! fetch_to "$hlsUrl" "$tmpdir/hls.m3u8" "$REFERER" || [ ! -s "$tmpdir/hls.m3u8" ]; then
+        echo 'Could not fetch the HLS playlist'
         exit 1
     fi
-    mediaUrl=$(resolve_url "$hlsUrl" "$variantRef")
-    if ! fetch_to "$mediaUrl" "$tmpdir/media.m3u8" "$REFERER" || [ ! -s "$tmpdir/media.m3u8" ]; then
-        echo 'Could not fetch the variant playlist'
-        exit 1
+    if grep -q 'EXT-X-STREAM-INF' "$tmpdir/hls.m3u8"; then
+        variantRef=$(pick_variant_near_480 "$tmpdir/hls.m3u8")
+        if [ -z "$variantRef" ]; then
+            echo 'Could not select a variant from the master playlist'
+            exit 1
+        fi
+        mediaUrl=$(resolve_url "$hlsUrl" "$variantRef")
+        if ! fetch_to "$mediaUrl" "$tmpdir/media.m3u8" "$REFERER" || [ ! -s "$tmpdir/media.m3u8" ]; then
+            echo 'Could not fetch the variant playlist'
+            exit 1
+        fi
+    else
+        mediaUrl="$hlsUrl"
+        cp "$tmpdir/hls.m3u8" "$tmpdir/media.m3u8"
+    fi
+    echo "Stream:   $mediaUrl"
+    # Save a copy of the media playlist; report segment count + duration.
+    playlist="$OUTDIR/playlists/${movie}.m3u8"
+    cp "$tmpdir/media.m3u8" "$playlist"
+    echo "Playlist: $playlist"
+    echo "Segments: $(grep -cE '\.ts' "$tmpdir/media.m3u8")"
+    duration=$(awk -F'[:,]' '/^#EXTINF/ {s += $2} END {printf "%.2f", s}' "$tmpdir/media.m3u8")
+    if [ -z "$duration" ] || [ "$duration" = "0.00" ]; then
+        duration=$(ffprobe -v error -user_agent "$UA" -headers $'Referer: https://www.pornhub.com/\r\n' -show_entries format=duration -of csv=p=0 "$mediaUrl" 2>/dev/null)
     fi
 else
+    # Progressive single-file .mp4 (e.g. from get_media): hand the URL straight to ffmpeg.
     mediaUrl="$hlsUrl"
-    cp "$tmpdir/hls.m3u8" "$tmpdir/media.m3u8"
-fi
-echo "Stream:   $mediaUrl"
-
-# Save a copy of the media playlist; report segment count + duration.
-playlist="$OUTDIR/playlists/${movie}.m3u8"
-cp "$tmpdir/media.m3u8" "$playlist"
-echo "Playlist: $playlist"
-echo "Segments: $(grep -cE '\.ts' "$tmpdir/media.m3u8")"
-duration=$(awk -F'[:,]' '/^#EXTINF/ {s += $2} END {printf "%.2f", s}' "$tmpdir/media.m3u8")
-if [ -z "$duration" ] || [ "$duration" = "0.00" ]; then
-    duration=$(ffprobe -v error -show_entries format=duration -of csv=p=0 "$mediaUrl" 2>/dev/null)
+    echo "Stream:   $mediaUrl (progressive mp4)"
+    duration=$(ffprobe -v error -user_agent "$UA" -headers $'Referer: https://www.pornhub.com/\r\n' -show_entries format=duration -of csv=p=0 "$mediaUrl" 2>/dev/null)
 fi
 
-if [ "$REMOTE" = "1" ]; then
-    # Resolve every segment (and any EXT-X-KEY URI) to an absolute URL against the
-    # media playlist URL, then wrap each in the proxy. apiKey is passed as argv.
-    python3 - "$tmpdir/media.m3u8" "$tmpdir/play.proxy.m3u8" "$apiKey" "$mediaUrl" "$PROXY" <<'PY'
-import sys, re, urllib.parse
-
-src, dst, key, base, proxy = sys.argv[1:6]
-
-def absolutize(ref):
-    return ref if re.match(r'https?://', ref) else urllib.parse.urljoin(base, ref)
-
-def wrap(url):
-    return proxy + '?key=' + urllib.parse.quote(key, safe='') + '&url=' + urllib.parse.quote(absolutize(url), safe='')
-
-out = []
-with open(src, encoding='utf-8') as f:
-    for line in f:
-        line = line.rstrip('\n')
-        if line.startswith('#EXT-X-KEY'):
-            m = re.search(r'URI="([^"]+)"', line)
-            if m:
-                line = line[:m.start(1)] + wrap(m.group(1)) + line[m.end(1):]
-        elif line and not line.startswith('#'):
-            line = wrap(line)
-        out.append(line)
-
-with open(dst, 'w', encoding='utf-8') as f:
-    f.write('\n'.join(out) + '\n')
-PY
-    if [ $? -ne 0 ] || [ ! -s "$tmpdir/play.proxy.m3u8" ]; then
-        echo 'Failed to rewrite playlist through the proxy'
-        exit 1
-    fi
-    ffInput="$tmpdir/play.proxy.m3u8"
-    echo "Proxied:  routing segments through the public proxy (compute automation)"
-else
-    inputArgs+=(-user_agent "$UA" -headers $'Referer: https://www.pornhub.com/\r\n' -reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5)
-    ffInput="$mediaUrl"
-fi
+ffInput="$mediaUrl"
+[ "$REMOTE" = "1" ] && echo "Tunnel:   ffmpeg via the SOCKS5->HTTP bridge ($HTTP_PROXY_BRIDGE)"
 echo "Duration: ${duration:-?}s"
 
 # 4. Download + mux (lossless copy).

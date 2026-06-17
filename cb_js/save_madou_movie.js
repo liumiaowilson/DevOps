@@ -241,84 +241,16 @@ const axios = require('axios');
             const fileName = path.basename(resolvedPath, path.extname(resolvedPath));
             cmd.log('Movie: ' + fileName);
 
-            // 1. Meta — probe duration + resolution from the local file (metaMovie logic).
-            cmd.log('Probing metadata...');
-            const metaResult = cp.spawnSync('python3', [ pyScript('meta-movie.py'), resolvedPath, ], {
-                stdio: [ 'ignore', 'pipe', 'inherit', ],
-            });
-            if(metaResult.status !== 0) {
-                throw new Error('meta-movie.py exited with status ' + metaResult.status);
-            }
-            let meta;
-            try {
-                meta = JSON.parse(metaResult.stdout.toString().trim());
-            }
-            catch(e) {
-                throw new Error('Failed to parse meta-movie.py output: ' + e.message);
-            }
-            const duration = Math.round(Number(meta.duration_seconds));
-            const resolution = meta.resolution;
-            if(!Number.isFinite(duration) || duration <= 0) {
-                throw new Error('Invalid duration_seconds in meta-movie.py output: ' + meta.duration_seconds);
-            }
-            if(!resolution) {
-                throw new Error('Missing resolution in meta-movie.py output');
-            }
-            cmd.log('Meta: ' + duration + 's, ' + resolution);
-
-            // 2. Summarize — extract frames then build summary.txt (summarizeMovie logic).
-            const framesDir = fs.mkdtempSync(path.join(os.tmpdir(), 'save_madou_movie_'));
-            let summary;
-            try {
-                cmd.log('Extracting frames into ' + framesDir);
-                const frameResult = cp.spawnSync('python3', [ pyScript('frame-movie.py'), resolvedPath, framesDir, ], { stdio: 'inherit' });
-                if(frameResult.status !== 0) {
-                    throw new Error('frame-movie.py exited with status ' + frameResult.status);
-                }
-
-                cmd.log('Summarizing frames...');
-                const compareResult = cp.spawnSync('python3', [ pyScript('frame-compare.py'), framesDir, ], {
-                    stdio: [ 'ignore', 'inherit', 'inherit', ],
-                });
-                if(compareResult.status !== 0) {
-                    throw new Error('frame-compare.py exited with status ' + compareResult.status);
-                }
-
-                const summaryPath = path.join(framesDir, 'summary.txt');
-                if(!fs.existsSync(summaryPath)) {
-                    throw new Error('frame-compare.py did not produce summary.txt');
-                }
-                summary = fs.readFileSync(summaryPath, 'utf8');
-                if(!summary || !summary.trim()) {
-                    throw new Error('summary.txt is empty');
-                }
-
-                // 3. Describe — condense the summary into a description (describeMovie logic).
-                cmd.log('Describing movie...');
-                const describeResult = cp.spawnSync('python3', [ pyScript('describe-movie.py'), ], {
-                    input: summary,
-                    stdio: [ 'pipe', 'pipe', 'inherit', ],
-                });
-                if(describeResult.status !== 0) {
-                    throw new Error('describe-movie.py exited with status ' + describeResult.status);
-                }
-                var description = describeResult.stdout.toString().trim();
-                if(!description) {
-                    throw new Error('describe-movie.py returned empty output');
-                }
-            }
-            finally {
-                try { fs.rmSync(framesDir, { recursive: true, force: true }); } catch(e) { /* best effort */ }
-            }
-
-            // 4-6. Scrape the poster from the madou page -> dash share iframe, download it, and
-            //   upload it to pCloud /MyPIM/Movie_Image/<fileName>.jpg. This is best-effort: the
-            //   share page's poster.jpg can be missing (HTTP 404) or the scrape can come back
-            //   empty, and a missing poster must NOT block the Movie record. Retry the whole
-            //   acquisition a few times for transient hiccups; if direct keeps failing, fall back
-            //   to routing through compute automation ('remote'); if that still fails, skip the
-            //   poster and leave File_1__c unset rather than aborting the save. When the run was
-            //   already invoked in remote mode there is no direct path to fall back from.
+            // 1. Scrape the poster from the madou page -> dash share iframe, download it, and
+            //   upload it to pCloud /MyPIM/Movie_Image/<fileName>.jpg. Run this FIRST, before the
+            //   minutes-long local python steps, so a geo-block/404/empty-scrape surfaces early
+            //   instead of after all that work. This is best-effort: the share page's poster.jpg
+            //   can be missing (HTTP 404) or the scrape can come back empty, and a missing poster
+            //   must NOT block the Movie record. Retry the whole acquisition a few times for
+            //   transient hiccups; if direct keeps failing, fall back to routing through compute
+            //   automation ('remote'); if that still fails, skip the poster and leave File_1__c
+            //   unset rather than aborting the save. When the run was already invoked in remote
+            //   mode there is no direct path to fall back from.
             let file1 = null;
             // Default the movie path to the raw fileName; when a poster IS uploaded, pCloud may
             // rewrite the filename and we re-derive this from the stored name below.
@@ -332,7 +264,7 @@ const axios = require('axios');
                 const lastMode = modeIdx === posterModes.length - 1;
                 for(let posterAttempt = 1; posterAttempt <= maxPosterAttempts; posterAttempt++) {
                     try {
-                        // 4. Scrape the poster image URL from the madou page -> dash share iframe.
+                        // 1a. Scrape the poster image URL from the madou page -> dash share iframe.
                         context.ux.action.start('Fetching madou page (' + modeLabel + ')');
                         const madouUrl = MADOU_BASE + '/' + encodeURIComponent(fileName) + '.html';
                         const pageHtml = await madouGetHtml(madouUrl, { 'User-Agent': USER_AGENT }, useRemote);
@@ -358,7 +290,7 @@ const axios = require('axios');
                         else if(posterUrl.startsWith('/')) posterUrl = DASH_BASE + posterUrl;
                         cmd.log('Poster: ' + posterUrl);
 
-                        // 5. Download the poster and save it to a tmp folder.
+                        // 1b. Download the poster and save it to a tmp folder.
                         context.ux.action.start('Downloading poster (' + modeLabel + ')');
                         const { buffer: posterBuffer, contentType: posterContentType } = await madouDownload(posterUrl, { 'User-Agent': USER_AGENT, 'Referer': shareUrl }, useRemote);
                         const localPosterPath = path.join(os.tmpdir(), fileName + '.jpg');
@@ -366,7 +298,7 @@ const axios = require('axios');
                         context.ux.action.stop();
                         cmd.log('Saved poster locally: ' + localPosterPath);
 
-                        // 6. Upload the poster to pCloud /MyPIM/Movie_Image/<fileName>.jpg
+                        // 1c. Upload the poster to pCloud /MyPIM/Movie_Image/<fileName>.jpg
                         context.ux.action.start('Logging into pCloud');
                         const accessToken = await getPCloudToken();
                         context.ux.action.stop();
@@ -405,7 +337,77 @@ const axios = require('axios');
                 }
             }
 
-            // 7. Create the Movie Item__c record with everything populated.
+            // 2. Meta — probe duration + resolution from the local file (metaMovie logic).
+            cmd.log('Probing metadata...');
+            const metaResult = cp.spawnSync('python3', [ pyScript('meta-movie.py'), resolvedPath, ], {
+                stdio: [ 'ignore', 'pipe', 'inherit', ],
+            });
+            if(metaResult.status !== 0) {
+                throw new Error('meta-movie.py exited with status ' + metaResult.status);
+            }
+            let meta;
+            try {
+                meta = JSON.parse(metaResult.stdout.toString().trim());
+            }
+            catch(e) {
+                throw new Error('Failed to parse meta-movie.py output: ' + e.message);
+            }
+            const duration = Math.round(Number(meta.duration_seconds));
+            const resolution = meta.resolution;
+            if(!Number.isFinite(duration) || duration <= 0) {
+                throw new Error('Invalid duration_seconds in meta-movie.py output: ' + meta.duration_seconds);
+            }
+            if(!resolution) {
+                throw new Error('Missing resolution in meta-movie.py output');
+            }
+            cmd.log('Meta: ' + duration + 's, ' + resolution);
+
+            // 3. Summarize — extract frames then build summary.txt (summarizeMovie logic).
+            const framesDir = fs.mkdtempSync(path.join(os.tmpdir(), 'save_madou_movie_'));
+            let summary;
+            try {
+                cmd.log('Extracting frames into ' + framesDir);
+                const frameResult = cp.spawnSync('python3', [ pyScript('frame-movie.py'), resolvedPath, framesDir, ], { stdio: 'inherit' });
+                if(frameResult.status !== 0) {
+                    throw new Error('frame-movie.py exited with status ' + frameResult.status);
+                }
+
+                cmd.log('Summarizing frames...');
+                const compareResult = cp.spawnSync('python3', [ pyScript('frame-compare.py'), framesDir, ], {
+                    stdio: [ 'ignore', 'inherit', 'inherit', ],
+                });
+                if(compareResult.status !== 0) {
+                    throw new Error('frame-compare.py exited with status ' + compareResult.status);
+                }
+
+                const summaryPath = path.join(framesDir, 'summary.txt');
+                if(!fs.existsSync(summaryPath)) {
+                    throw new Error('frame-compare.py did not produce summary.txt');
+                }
+                summary = fs.readFileSync(summaryPath, 'utf8');
+                if(!summary || !summary.trim()) {
+                    throw new Error('summary.txt is empty');
+                }
+
+                // 4. Describe — condense the summary into a description (describeMovie logic).
+                cmd.log('Describing movie...');
+                const describeResult = cp.spawnSync('python3', [ pyScript('describe-movie.py'), ], {
+                    input: summary,
+                    stdio: [ 'pipe', 'pipe', 'inherit', ],
+                });
+                if(describeResult.status !== 0) {
+                    throw new Error('describe-movie.py exited with status ' + describeResult.status);
+                }
+                var description = describeResult.stdout.toString().trim();
+                if(!description) {
+                    throw new Error('describe-movie.py returned empty output');
+                }
+            }
+            finally {
+                try { fs.rmSync(framesDir, { recursive: true, force: true }); } catch(e) { /* best effort */ }
+            }
+
+            // 5. Create the Movie Item__c record with everything populated.
             context.ux.action.start('Creating Movie record');
             const movieFields = {
                 Name: truncateForRecordName(fileName),
@@ -427,7 +429,7 @@ const axios = require('axios');
             if(!recordId) throw new Error('Failed to create Movie record');
             context.ux.action.stop();
 
-            // 8. Best-effort cleanup: remove the matching "Done" MadouQueueItem record.
+            // 6. Best-effort cleanup: remove the matching "Done" MadouQueueItem record.
             //    The Movie is already saved, so a missing/failed cleanup is logged, not fatal.
             try {
                 const queueName = truncateForRecordName(fileName);

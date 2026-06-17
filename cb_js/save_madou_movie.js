@@ -199,6 +199,8 @@ const axios = require('axios');
                         access_token: accessToken,
                         path: folderPath.replace(/\/$/, ''),
                         filename,
+                        // 0 = force overwrite any existing file with the same name (1 would
+                        // rename the upload to avoid the collision; we want the cover replaced).
                         renameifexists: 0,
                     },
                     headers: form.getHeaders(),

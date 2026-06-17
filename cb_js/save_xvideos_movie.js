@@ -254,6 +254,8 @@ const axios = require('axios');
                         access_token: accessToken,
                         path: folderPath.replace(/\/$/, ''),
                         filename,
+                        // 0 = force overwrite any existing file with the same name (1 would
+                        // rename the upload to avoid the collision; we want the cover replaced).
                         renameifexists: 0,
                     },
                     headers: form.getHeaders(),
@@ -319,7 +321,69 @@ const axios = require('axios');
             }
             cmd.log('Page: ' + pageUrl);
 
-            // 2. Meta — probe duration + resolution from the local file (metaMovie logic).
+            // 2. Cover image — scrape the poster URL + title from the xvideos watch page,
+            //    download it, and upload it to pCloud /MyPIM/Movie_Image/<fileName>.jpg. Run this
+            //    FIRST, before the minutes-long local python steps, so a geo-block/404/empty
+            //    scrape surfaces early instead of after all that work. Best-effort: a missing
+            //    poster must NOT block the Movie record — on any failure we log a warning, leave
+            //    File_1__c unset, and still save the record. The page title (used for the record
+            //    Name) is captured here too; if even the page fetch fails we fall back to the id.
+            let file1 = null;
+            // Default the movie path to the raw fileName; when a poster IS uploaded, pCloud may
+            // rewrite the filename and we re-derive this from the stored name below.
+            let movieBaseName = fileName;
+            // Record Name comes from the page's movie title (capped at 80), not the id; default
+            // to the id and overwrite it once we successfully scrape a title.
+            let recordName = truncateForRecordName(fileName);
+            try {
+                // 2a. Scrape the poster URL + title from the xvideos watch page.
+                context.ux.action.start('Fetching xvideos page');
+                const pageHtml = await xvGetHtml(pageUrl, { 'User-Agent': USER_AGENT, 'Referer': XVIDEOS_REFERER });
+                const posterUrl = extractPosterUrl(pageHtml);
+                const movieTitle = extractTitle(pageHtml);
+                context.ux.action.stop();
+                if(movieTitle) recordName = truncateForRecordName(movieTitle);
+                cmd.log('Title: ' + (movieTitle || '(none found, using id ' + fileName + ')'));
+                if(!posterUrl) {
+                    throw new Error('Could not find the poster (setThumbUrl169 / og:image) on ' + pageUrl);
+                }
+                cmd.log('Poster: ' + posterUrl);
+
+                // 2b. Download the poster and save it to a tmp folder.
+                context.ux.action.start('Downloading poster');
+                const { buffer: posterBuffer, contentType: posterContentType } = await xvDownload(posterUrl, { 'User-Agent': USER_AGENT, 'Referer': pageUrl });
+                const localPosterPath = path.join(os.tmpdir(), fileName + '.jpg');
+                fs.writeFileSync(localPosterPath, posterBuffer);
+                context.ux.action.stop();
+                cmd.log('Saved poster locally: ' + localPosterPath);
+
+                // 2c. Upload the poster to pCloud /MyPIM/Movie_Image/<fileName>.jpg, force-
+                //     overwriting any existing cover with the same name (renameifexists: 0).
+                context.ux.action.start('Logging into pCloud');
+                const accessToken = await getPCloudToken();
+                context.ux.action.stop();
+
+                await pcloudCreateFolder(PCLOUD_ROOT, accessToken);
+
+                context.ux.action.start('Uploading poster to pCloud');
+                const posterFilename = fileName + '.jpg';
+                const uploadData = await pcloudUploadFile(PCLOUD_ROOT, posterFilename, posterBuffer, posterContentType, accessToken);
+                const uploaded = uploadData && uploadData.metadata && uploadData.metadata[0];
+                file1 = (uploaded && uploaded.path) || (PCLOUD_ROOT + '/' + posterFilename);
+                // pCloud sometimes rewrites the uploaded filename (sanitizing characters);
+                // uploaded.name carries the actual stored name. Derive the movie path from it
+                // so Extension__c matches the same rewrite pCloud applies to the movie file.
+                const coverFilename = (uploaded && uploaded.name) || posterFilename;
+                movieBaseName = path.basename(coverFilename, path.extname(coverFilename));
+                context.ux.action.stop();
+                cmd.log('Uploaded poster: ' + file1);
+            }
+            catch(posterErr) {
+                context.ux.action.stop();
+                cmd.warn('Poster unavailable (' + (posterErr.message || String(posterErr)) + '); saving Movie without a poster (File_1__c unset).');
+            }
+
+            // 3. Meta — probe duration + resolution from the local file (metaMovie logic).
             cmd.log('Probing metadata...');
             const metaResult = cp.spawnSync('python3', [ pyScript('meta-movie.py'), resolvedPath, ], {
                 stdio: [ 'ignore', 'pipe', 'inherit', ],
@@ -344,7 +408,7 @@ const axios = require('axios');
             }
             cmd.log('Meta: ' + duration + 's, ' + resolution);
 
-            // 3. Summarize — extract frames then build summary.txt (summarizeMovie logic).
+            // 4. Summarize — extract frames then build summary.txt (summarizeMovie logic).
             const framesDir = fs.mkdtempSync(path.join(os.tmpdir(), 'save_xvideos_movie_'));
             let summary;
             try {
@@ -371,7 +435,7 @@ const axios = require('axios');
                     throw new Error('summary.txt is empty');
                 }
 
-                // 4. Describe — condense the summary into a description (describeMovie logic).
+                // 5. Describe — condense the summary into a description (describeMovie logic).
                 cmd.log('Describing movie...');
                 const describeResult = cp.spawnSync('python3', [ pyScript('describe-movie.py'), ], {
                     input: summary,
@@ -389,69 +453,29 @@ const axios = require('axios');
                 try { fs.rmSync(framesDir, { recursive: true, force: true }); } catch(e) { /* best effort */ }
             }
 
-            // 5. Scrape the poster URL from the xvideos watch page.
-            context.ux.action.start('Fetching xvideos page');
-            const pageHtml = await xvGetHtml(pageUrl, { 'User-Agent': USER_AGENT, 'Referer': XVIDEOS_REFERER });
-            const posterUrl = extractPosterUrl(pageHtml);
-            // Record Name comes from the page's movie title (capped at 80), not the id.
-            // Fall back to the id only if the page exposes no title at all.
-            const movieTitle = extractTitle(pageHtml);
-            context.ux.action.stop();
-            if(!posterUrl) {
-                throw new Error('Could not find the poster (setThumbUrl169 / og:image) on ' + pageUrl);
-            }
-            cmd.log('Poster: ' + posterUrl);
-            const recordName = truncateForRecordName(movieTitle || fileName);
-            cmd.log('Title: ' + (movieTitle || '(none found, using id ' + fileName + ')'));
-
-            // 6. Download the poster and save it to a tmp folder.
-            context.ux.action.start('Downloading poster');
-            const { buffer: posterBuffer, contentType: posterContentType } = await xvDownload(posterUrl, { 'User-Agent': USER_AGENT, 'Referer': pageUrl });
-            const localPosterPath = path.join(os.tmpdir(), fileName + '.jpg');
-            fs.writeFileSync(localPosterPath, posterBuffer);
-            context.ux.action.stop();
-            cmd.log('Saved poster locally: ' + localPosterPath);
-
-            // 7. Upload the poster to pCloud /MyPIM/Movie_Image/<fileName>.jpg
-            context.ux.action.start('Logging into pCloud');
-            const accessToken = await getPCloudToken();
-            context.ux.action.stop();
-
-            await pcloudCreateFolder(PCLOUD_ROOT, accessToken);
-
-            context.ux.action.start('Uploading poster to pCloud');
-            const posterFilename = fileName + '.jpg';
-            const uploadData = await pcloudUploadFile(PCLOUD_ROOT, posterFilename, posterBuffer, posterContentType, accessToken);
-            const uploaded = uploadData && uploadData.metadata && uploadData.metadata[0];
-            const file1 = (uploaded && uploaded.path) || (PCLOUD_ROOT + '/' + posterFilename);
-            // pCloud sometimes rewrites the uploaded filename (sanitizing characters);
-            // uploaded.name carries the actual stored name. Derive the movie path from it
-            // so Extension__c matches the same rewrite pCloud applies to the movie file.
-            const coverFilename = (uploaded && uploaded.name) || posterFilename;
-            const movieBaseName = path.basename(coverFilename, path.extname(coverFilename));
-            context.ux.action.stop();
-            cmd.log('Uploaded poster: ' + file1);
-
-            // 8. Create the Movie Item__c record with everything populated.
+            // 6. Create the Movie Item__c record with everything populated.
             context.ux.action.start('Creating Movie record');
-            const created = await withRetry('Create Movie record', () => context.mypim.sobject('Item__c').create({
+            const movieFields = {
                 Name: recordName,
                 External_Id__c: fileName,
                 Type__c: 'Movie',
                 Extension__c: MOVIE_ROOT + '/' + movieBaseName + '.mp4',
-                File_1__c: file1,
                 Text__c: summary,
                 Description__c: description,
                 Price__c: duration,
                 Password__c: resolution,
                 Show_In_UI__c: true,
                 End_Date__c: new Date().toISOString(),
-            }));
+            };
+            // Only set File_1__c when the poster was successfully uploaded; a skipped poster
+            // leaves it unset rather than pointing at a pCloud file that was never created.
+            if(file1) movieFields.File_1__c = file1;
+            const created = await withRetry('Create Movie record', () => context.mypim.sobject('Item__c').create(movieFields));
             const recordId = created.id || created.Id;
             if(!recordId) throw new Error('Failed to create Movie record');
             context.ux.action.stop();
 
-            // 9. Best-effort cleanup: remove the XVideosQueueItem record we matched above.
+            // 7. Best-effort cleanup: remove the XVideosQueueItem record we matched above.
             //    The Movie is already saved, so a missing/failed cleanup is logged, not fatal.
             try {
                 await withRetry('Delete queue record', () => context.mypim.sobject('Item__c').delete(queueRecord.Id));
@@ -461,7 +485,7 @@ const axios = require('axios');
                 cmd.warn('Queue record cleanup failed (Movie was still saved): ' + (err.message || String(err)));
             }
 
-            cmd.logSuccess('Saved "' + fileName + '" — Movie ' + recordId + ', poster ' + file1 + ', ' + duration + 's, ' + resolution);
+            cmd.logSuccess('Saved "' + fileName + '" — Movie ' + recordId + ', poster ' + (file1 || 'none') + ', ' + duration + 's, ' + resolution);
         })().catch(err => {
             context.ux.action.stop();
             let msg = err.message || String(err);

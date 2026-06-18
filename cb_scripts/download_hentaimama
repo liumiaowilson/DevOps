@@ -1,9 +1,10 @@
 # {
 #   "name": "download_hentaimama",
-#   "description": "Download every episode MP4 of a hentaimama.io title. Accepts a /tvshows/ or /episodes/ URL, resolves the series' episodes + MP4 urls server-side via compute automation (hentaimama.io is geo-blocked locally), and downloads each. Single-episode titles save as <slug>.mp4; multi-episode as <slug>_<NNN>.mp4.",
-#   "usage": "dev download_hentaimama <https://hentaimama.io/tvshows/<slug>/ | https://hentaimama.io/episodes/<slug>-episode-N/>"
+#   "description": "Download every episode MP4 of a hentaimama.io title. Accepts a /tvshows/ or /episodes/ URL, resolves the series' episodes + MP4 urls, and downloads each. Single-episode titles save as <slug>.mp4; multi-episode as <slug>_<NNN>.mp4. Pass 'remote' to route the page/ajax/embed resolution through compute automation (the MP4 download stays direct).",
+#   "usage": "dev download_hentaimama <https://hentaimama.io/tvshows/<slug>/ | https://hentaimama.io/episodes/<slug>-episode-N/> [remote]"
 # }
 url=$1
+mode=$2                         # optional: 'remote' to route resolution through compute automation
 
 if [ -z "$url" ]; then
     echo 'URL is required (e.g. https://hentaimama.io/tvshows/<slug>/)'
@@ -48,7 +49,7 @@ json=""
 count=0
 while :; do
     echo "Resolving episodes... (attempt $attempt/$maxAttempts)"
-    raw=$(sf mypim run script -o "$fetchAlias" -f "$HOME/DevOps/cb_js/hentaimamaResolve.js" "$seriesUrl")
+    raw=$(sf mypim run script -o "$fetchAlias" -f "$HOME/DevOps/cb_js/hentaimamaResolve.js" "$seriesUrl" "$mode")
     json=$(printf '%s\n' "$raw" | grep -m1 '^{')
     if printf '%s' "$json" | jq -e '.episodes' >/dev/null 2>&1; then
         count=$(printf '%s' "$json" | jq '.episodes | length')

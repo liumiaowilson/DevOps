@@ -6,89 +6,113 @@
         cmd.error('Series URL is required (e.g. https://hentaimama.io/tvshows/<slug>/)');
         return;
     }
+    // 'remote' routes the hentaimama page / admin-ajax / embed fetches through the
+    // org's /computeAutomation endpoint (which runs from a non-geo-blocked location),
+    // mirroring madouGet.js / save_madou_movie.js. Direct (local axios) by default.
+    const REMOTE = context.argv[1] === 'remote';
 
-    // Resolve every episode's downloadable MP4 entirely server-side via the org's
-    // /computeAutomation endpoint (ComputeAutomationRestService -> GComputeService),
-    // so the HTTP callouts originate from Salesforce, not this machine — bypassing
-    // the local egress block on hentaimama.io. Mirrors madouGet.js's remote path.
-    //
-    // Per episode (resolved in parallel) the hentaimama / DooPlay chain is:
-    //   1. GET the episode page  -> numeric WordPress post id (idpost)
-    //   2. POST admin-ajax       -> get_player_contents = JSON array of <iframe> embeds
-    //      (action=get_player_contents&a=<idpost>, form-encoded; index 0 = the
-    //       tokenless gdvid mirror)
-    //   3. GET each embed in turn -> JWPlayer `file: "<mp4>"`; first hit wins, so a
-    //      dead mirror falls through to the next.
-    // Returns { episodes: [ { num, mp4Url|null, error? } ] } sorted by episode number.
-    const RESOLVE_SCRIPT = `
-const axios = require('axios');
-(function() {
-    const UA = '${USER_AGENT}';
-    const seriesUrl = $data.seriesUrl;
-    const headers = { 'User-Agent': UA };
-    const ajaxUrl = 'https://hentaimama.io/wp-admin/admin-ajax.php';
-    const get = (u, h) => axios.get(u, { headers: h || headers, timeout: 90000, validateStatus: () => true });
-
-    const resolveOne = ep => get(ep.episodeUrl).then(r => {
-        const h = typeof r.data === 'string' ? r.data : '';
-        const idM = /name="idpost"\\s+value="(\\d+)"/i.exec(h);
-        if(!idM) return { num: ep.num, mp4Url: null, error: 'no idpost' };
-        const body = 'action=get_player_contents&a=' + encodeURIComponent(idM[1]);
-        const ajaxHeaders = { 'User-Agent': UA, 'Referer': ep.episodeUrl, 'Content-Type': 'application/x-www-form-urlencoded' };
-        return axios.post(ajaxUrl, body, { headers: ajaxHeaders, timeout: 90000, validateStatus: () => true }).then(pr => {
-            let arr = pr.data;
-            if(typeof arr === 'string') { try { arr = JSON.parse(arr); } catch(e) { arr = []; } }
-            if(!Array.isArray(arr)) arr = [];
-            const embeds = [];
-            arr.forEach(frag => {
-                const im = /<iframe[^>]*\\ssrc="([^"]+)"/i.exec(frag || '');
-                if(im) embeds.push(im[1].replace(/&amp;/g, '&'));
-            });
-            const tryEmbed = i => {
-                if(i >= embeds.length) return { num: ep.num, mp4Url: null, error: 'no source' };
-                return get(embeds[i]).then(er => {
-                    const eh = typeof er.data === 'string' ? er.data : '';
-                    const fM = /file:\\s*["']([^"']+)["']/i.exec(eh);
-                    if(fM && fM[1]) return { num: ep.num, mp4Url: fM[1] };
-                    return tryEmbed(i + 1);
-                }).catch(() => tryEmbed(i + 1));
-            };
-            return tryEmbed(0);
-        });
-    }).catch(e => ({ num: ep.num, mp4Url: null, error: String((e && e.message) || e) }));
-
-    return get(seriesUrl).then(resp => {
-        const html = typeof resp.data === 'string' ? resp.data : '';
-        const eps = [];
-        const seen = new Set();
-        const aRe = /<a href="(https:\\/\\/hentaimama\\.io\\/episodes\\/[^"]+)">/gi;
-        let m;
-        while((m = aRe.exec(html)) !== null) {
-            const u = m[1];
-            if(seen.has(u)) continue;
-            seen.add(u);
-            const nm = /-episode-(\\d+)\\/?$/i.exec(u);
-            eps.push({ episodeUrl: u, num: nm ? parseInt(nm[1], 10) : (eps.length + 1) });
-        }
-        if(!eps.length) return { episodes: [] };
-        return Promise.all(eps.map(resolveOne)).then(list => ({
-            episodes: list.sort((a, b) => a.num - b.num),
-        }));
-    });
-})()
-`;
-
-    return (async () => {
+    // Run a script server-side via the org's /computeAutomation REST resource so the
+    // HTTP callout originates from Salesforce, not this machine. Returns `result`.
+    const runAutomation = async (code, data) => {
         const raw = await context.mypim.apex.post('/computeAutomation', {
-            code: RESOLVE_SCRIPT,
-            data: JSON.stringify({ seriesUrl }),
+            code,
+            data: JSON.stringify(data),
         });
         const envelope = typeof raw === 'string' ? JSON.parse(raw) : raw;
         if(!envelope || envelope.success === false) {
             throw new Error((envelope && envelope.message) || 'runComputeAutomation failed');
         }
+        return envelope.result;
+    };
+
+    // Remote GET / POST scripts — no regex inside, so no escaping needed. They return
+    // the response body as a string (the orchestration below parses it locally).
+    const REMOTE_GET_SCRIPT = `
+const axios = require('axios');
+(function() {
+    return axios.get($data.url, { headers: $data.headers, timeout: 60000, validateStatus: () => true })
+        .then(r => (typeof r.data === 'string' ? r.data : JSON.stringify(r.data)));
+})()
+`;
+    const REMOTE_POST_SCRIPT = `
+const axios = require('axios');
+(function() {
+    return axios.post($data.url, $data.body, { headers: $data.headers, timeout: 60000, validateStatus: () => true })
+        .then(r => (typeof r.data === 'string' ? r.data : JSON.stringify(r.data)));
+})()
+`;
+
+    // Fetch helpers route direct (local axios) or remote (compute automation) based on
+    // the flag; both return the response body as a string.
+    const httpGet = async (url, headers) => {
+        if(REMOTE) return runAutomation(REMOTE_GET_SCRIPT, { url, headers });
+        const r = await context.axios.get(url, { headers, timeout: 60000, validateStatus: () => true });
+        return typeof r.data === 'string' ? r.data : JSON.stringify(r.data);
+    };
+    const httpPostForm = async (url, body, headers) => {
+        if(REMOTE) return runAutomation(REMOTE_POST_SCRIPT, { url, body, headers });
+        const r = await context.axios.post(url, body, { headers, timeout: 60000, validateStatus: () => true });
+        return typeof r.data === 'string' ? r.data : JSON.stringify(r.data);
+    };
+
+    const headers = { 'User-Agent': USER_AGENT };
+    const ajaxUrl = 'https://hentaimama.io/wp-admin/admin-ajax.php';
+
+    // Per episode (DooPlay chain): GET episode -> idpost; POST admin-ajax
+    // get_player_contents -> JSON array of <iframe> embeds (index 0 = the tokenless
+    // gdvid mirror); GET each embed -> JWPlayer `file: "<mp4>"`, first hit wins.
+    const resolveOne = async ep => {
+        try {
+            const epHtml = await httpGet(ep.episodeUrl, headers);
+            const idM = /name="idpost"\s+value="(\d+)"/i.exec(epHtml);
+            if(!idM) return { num: ep.num, mp4Url: null, error: 'no idpost' };
+            const body = 'action=get_player_contents&a=' + encodeURIComponent(idM[1]);
+            const ajaxHeaders = { 'User-Agent': USER_AGENT, 'Referer': ep.episodeUrl, 'Content-Type': 'application/x-www-form-urlencoded' };
+            const arrRaw = await httpPostForm(ajaxUrl, body, ajaxHeaders);
+            let arr;
+            try { arr = JSON.parse(arrRaw); } catch(e) { arr = []; }
+            if(!Array.isArray(arr)) arr = [];
+            const embeds = [];
+            arr.forEach(frag => {
+                const im = /<iframe[^>]*\ssrc="([^"]+)"/i.exec(frag || '');
+                if(im) embeds.push(im[1].replace(/&amp;/g, '&'));
+            });
+            for(let i = 0; i < embeds.length; i++) {
+                try {
+                    const eh = await httpGet(embeds[i], headers);
+                    const fM = /file:\s*["']([^"']+)["']/i.exec(eh);
+                    if(fM && fM[1]) return { num: ep.num, mp4Url: fM[1] };
+                }
+                catch(e) { /* try next mirror */ }
+            }
+            return { num: ep.num, mp4Url: null, error: 'no source' };
+        }
+        catch(e) {
+            return { num: ep.num, mp4Url: null, error: String((e && e.message) || e) };
+        }
+    };
+
+    return (async () => {
+        const html = await httpGet(seriesUrl, headers);
+        const eps = [];
+        const seen = new Set();
+        const aRe = /<a href="(https:\/\/hentaimama\.io\/episodes\/[^"]+)">/gi;
+        let m;
+        while((m = aRe.exec(html)) !== null) {
+            const u = m[1];
+            if(seen.has(u)) continue;
+            seen.add(u);
+            const nm = /-episode-(\d+)\/?$/i.exec(u);
+            eps.push({ episodeUrl: u, num: nm ? parseInt(nm[1], 10) : (eps.length + 1) });
+        }
+        if(!eps.length) {
+            cmd.log(JSON.stringify({ episodes: [] }));
+            return;
+        }
+        const list = await Promise.all(eps.map(resolveOne));
+        list.sort((a, b) => a.num - b.num);
         // Print ONLY the resolved JSON so the bash caller can parse it with jq.
-        cmd.log(JSON.stringify(envelope.result || { episodes: [] }));
+        cmd.log(JSON.stringify({ episodes: list }));
     })().catch(err => {
         cmd.error(err.message || String(err));
     });

@@ -1,0 +1,14 @@
+# {
+#   "name": "save_hentaimama_cartoon",
+#   "description": "Scrape the hentaimama series poster + synopsis for a downloaded cartoon file, upload the poster to pCloud, probe the local file's duration/resolution, and create a Cartoon Item__c record (cleaning up the matching 'Done' HentaiMamaQueueItem). Pass 'remote' to route hentaimama requests through compute automation",
+#   "usage": "dev save_hentaimama_cartoon <path/to/file.mp4> [remote]"
+# }
+filePath=$1
+mode=$2                         # optional: 'remote' to use compute automation for hentaimama requests
+
+if [ -z "$filePath" ]; then
+    echo 'Cartoon file path is required'
+    exit 1
+fi
+
+sf mypim run script -o mypim -f ~/DevOps/cb_js/save_hentaimama_cartoon.js "$filePath" "$mode"

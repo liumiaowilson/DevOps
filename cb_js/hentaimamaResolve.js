@@ -59,8 +59,10 @@ const axios = require('axios');
     const ajaxUrl = 'https://hentaimama.io/wp-admin/admin-ajax.php';
 
     // Per episode (DooPlay chain): GET episode -> idpost; POST admin-ajax
-    // get_player_contents -> JSON array of <iframe> embeds (index 0 = the tokenless
-    // gdvid mirror); GET each embed -> JWPlayer `file: "<mp4>"`, first hit wins.
+    // get_player_contents -> JSON array of <iframe> embeds (mirrors in priority
+    // order); GET each embed -> JWPlayer `file: "<url>"`. Prefer a progressive
+    // .mp4 (the only thing a plain curl can download) and keep any .m3u8 HLS
+    // playlist only as a last-resort fallback.
     const resolveOne = async ep => {
         try {
             const epHtml = await httpGet(ep.episodeUrl, headers);
@@ -77,14 +79,22 @@ const axios = require('axios');
                 const im = /<iframe[^>]*\ssrc="([^"]+)"/i.exec(frag || '');
                 if(im) embeds.push(im[1].replace(/&amp;/g, '&'));
             });
+            // fallback holds the first .m3u8 seen so an HLS-only title still
+            // resolves, but an .mp4 from any embed always wins.
+            let fallback = null;
             for(let i = 0; i < embeds.length; i++) {
                 try {
                     const eh = await httpGet(embeds[i], headers);
                     const fM = /file:\s*["']([^"']+)["']/i.exec(eh);
-                    if(fM && fM[1]) return { num: ep.num, mp4Url: fM[1] };
+                    if(fM && fM[1]) {
+                        const u = fM[1];
+                        if(/\.m3u8(\?|$)/i.test(u)) { if(!fallback) fallback = u; continue; }
+                        return { num: ep.num, mp4Url: u };
+                    }
                 }
                 catch(e) { /* try next mirror */ }
             }
+            if(fallback) return { num: ep.num, mp4Url: fallback };
             return { num: ep.num, mp4Url: null, error: 'no source' };
         }
         catch(e) {

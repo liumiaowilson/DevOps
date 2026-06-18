@@ -1,0 +1,87 @@
+# {
+#   "name": "download_hentaimama_auto",
+#   "description": "Process the oldest N Pending HentaiMamaQueueItem CustomData records from the mypim org: for each, take the hentaimama reference from Question__c, run dev download_hentaimama on it, and mark the record Username__c='Done' on success. Aborts when the queue is empty or a step fails. Resolution + download are delegated to download_hentaimama (which always resolves remotely via compute automation).",
+#   "usage": "dev download_hentaimama_auto [N]"
+# }
+alias=mypim
+N=${1:-1}
+
+if ! [[ "$N" =~ ^[1-9][0-9]*$ ]]; then
+    echo "Error: N must be a positive integer (got: '$N')"
+    exit 1
+fi
+
+# Retry an org/sf operation up to 3 times with a 5s pause between attempts.
+retry() {
+    local attempt=1
+    while :; do
+        "$@" && return 0
+        if [ "$attempt" -ge 3 ]; then
+            return 1
+        fi
+        echo "  Attempt $attempt failed; retrying in 5s..." >&2
+        sleep 5
+        attempt=$((attempt+1))
+    done
+}
+
+queryOldest() {
+    sf data query \
+        -q "SELECT Id, Question__c FROM Item__c WHERE Type__c = 'CustomData' AND Parent__r.Name = 'HentaiMamaQueueItem' AND Username__c = 'Pending' ORDER BY CreatedDate ASC LIMIT 1" \
+        -o "$alias" --json
+}
+
+markDone() {
+    sf data update record -s Item__c -i "$1" -v "Username__c=Done" -o "$alias" --json
+}
+
+i=0
+while [ "$i" -lt "$N" ]; do
+    i=$((i+1))
+    echo "===== [$i/$N] $(date '+%Y-%m-%d %H:%M:%S') ====="
+
+    result=$(retry queryOldest)
+    if [ $? -ne 0 ]; then
+        echo "Query failed after retries; aborting."
+        exit 1
+    fi
+
+    totalSize=$(printf '%s' "$result" | jq -r '.result.totalSize')
+    if [ "$totalSize" = "0" ] || [ -z "$totalSize" ] || [ "$totalSize" = "null" ]; then
+        echo "No more Pending HentaiMamaQueueItem records; done."
+        exit 0
+    fi
+
+    recordId=$(printf '%s' "$result" | jq -r '.result.records[0].Id')
+    hm_ref=$(printf '%s' "$result" | jq -r '.result.records[0].Question__c')
+
+    echo "Record:   $recordId"
+
+    if [ -z "$hm_ref" ] || [ "$hm_ref" = "null" ]; then
+        echo "Record $recordId has an empty hentaimama reference; aborting (record kept)."
+        exit 1
+    fi
+
+    # Question__c holds either a full page URL, a bare '/tvshows/...' or '/episodes/...'
+    # path, or a bare series slug; normalize to an absolute hentaimama URL.
+    case "$hm_ref" in
+        http://*|https://*)        hm_url="$hm_ref" ;;
+        /tvshows/*|/episodes/*)    hm_url="https://hentaimama.io${hm_ref}" ;;
+        *)                         hm_url="https://hentaimama.io/tvshows/${hm_ref}/" ;;
+    esac
+
+    sh "$ScriptsDir/download_hentaimama" "$hm_url"
+    dl_rc=$?
+    if [ "$dl_rc" -ne 0 ]; then
+        echo "download_hentaimama failed for $hm_url; aborting (record kept)."
+        exit 1
+    fi
+
+    if ! retry markDone "$recordId"; then
+        echo "Failed to mark record $recordId Done after retries; aborting."
+        exit 1
+    fi
+    echo "Marked Done: $recordId"
+done
+
+echo "Reached N=$N iterations; stopping."

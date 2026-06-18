@@ -61,7 +61,17 @@
         .replace(/&lt;/g, '<')
         .replace(/&gt;/g, '>')
         .replace(/&ndash;/g, '-')
+        .replace(/&#8211;/g, '-')
+        .replace(/&#8212;/g, '-')
+        .replace(/&mdash;/g, '-')
         .replace(/&hellip;/g, '...')
+        .replace(/&#8230;/g, '...')
+        .replace(/&lsquo;|&rsquo;|&apos;/g, "'")
+        .replace(/&ldquo;|&rdquo;/g, '"')
+        // Catch-all for any remaining numeric (decimal/hex) entities — accents,
+        // symbols, etc. — lacking an explicit ASCII normalization above.
+        .replace(/&#x([0-9a-fA-F]+);/g, (m, h) => String.fromCodePoint(parseInt(h, 16)))
+        .replace(/&#(\d+);/g, (m, n) => String.fromCodePoint(parseInt(n, 10)))
         .replace(/\s+/g, ' ')
         .trim();
 

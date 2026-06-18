@@ -1,0 +1,105 @@
+# {
+#   "name": "download_hentaimama",
+#   "description": "Download every episode MP4 of a hentaimama.io title. Accepts a /tvshows/ or /episodes/ URL, resolves the series' episodes + MP4 urls server-side via compute automation (hentaimama.io is geo-blocked locally), and downloads each. Single-episode titles save as <slug>.mp4; multi-episode as <slug>_<NNN>.mp4.",
+#   "usage": "dev download_hentaimama <https://hentaimama.io/tvshows/<slug>/ | https://hentaimama.io/episodes/<slug>-episode-N/>"
+# }
+url=$1
+
+if [ -z "$url" ]; then
+    echo 'URL is required (e.g. https://hentaimama.io/tvshows/<slug>/)'
+    exit 0
+fi
+
+UA="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+
+# Episode + MP4 resolution is entirely mypim-bound: the /computeAutomation endpoint
+# and the '/API/MyPIM/key' Config_Item__c live in the mypim org, and hentaimama.io is
+# geo-blocked from this machine so the page/ajax/embed fetches must originate from
+# Salesforce. Pin to mypim rather than the default org.
+fetchAlias=mypim
+
+OUTDIR="$HOME/Downloads/hentaimama"
+mkdir -p "$OUTDIR"
+
+# 1. Derive the series /tvshows/<slug>/ URL + slug from the input. An /episodes/
+#    <slug>-episode-N/ URL maps to its series by stripping the '-episode-N' suffix.
+case "$url" in
+    *hentaimama.io/tvshows/*)
+        slug=$(printf '%s' "$url" | sed -E 's#^.*/tvshows/([^/?#]+).*#\1#')
+        ;;
+    *hentaimama.io/episodes/*)
+        epslug=$(printf '%s' "$url" | sed -E 's#^.*/episodes/([^/?#]+).*#\1#')
+        slug=$(printf '%s' "$epslug" | sed -E 's/-episode-[0-9]+$//')
+        ;;
+    *)
+        echo 'URL must be a hentaimama.io /tvshows/ or /episodes/ link'
+        exit 1
+        ;;
+esac
+seriesUrl="https://hentaimama.io/tvshows/${slug}/"
+echo "Series:   $seriesUrl"
+echo "Slug:     $slug"
+
+# 2. Resolve the episode list + each episode's MP4 url server-side (compute
+#    automation), retrying the whole resolve on a transient miss.
+maxAttempts=5
+attempt=1
+json=""
+count=0
+while :; do
+    echo "Resolving episodes... (attempt $attempt/$maxAttempts)"
+    raw=$(sf mypim run script -o "$fetchAlias" -f "$HOME/DevOps/cb_js/hentaimamaResolve.js" "$seriesUrl")
+    json=$(printf '%s\n' "$raw" | grep -m1 '^{')
+    if printf '%s' "$json" | jq -e '.episodes' >/dev/null 2>&1; then
+        count=$(printf '%s' "$json" | jq '.episodes | length')
+        [ "$count" -gt 0 ] && break
+        echo 'No episodes resolved.'
+    else
+        echo 'Resolve returned no valid JSON.'
+    fi
+    if [ "$attempt" -ge "$maxAttempts" ]; then
+        echo "Giving up after $maxAttempts attempts"
+        exit 1
+    fi
+    attempt=$((attempt + 1))
+    sleep 2
+done
+echo "Episodes: $count"
+
+# 3. Download each resolved MP4. Single-episode titles keep the bare slug; multi-
+#    episode titles get the '_<NNN>' suffix (NNN = episode number, zero-padded).
+printf '%s' "$json" | jq -c '.episodes[]' | while IFS= read -r ep; do
+    num=$(printf '%s' "$ep" | jq -r '.num')
+    mp4=$(printf '%s' "$ep" | jq -r '.mp4Url')
+
+    if [ -z "$mp4" ] || [ "$mp4" = "null" ]; then
+        err=$(printf '%s' "$ep" | jq -r '.error // "unknown"')
+        echo "  Episode $num: no MP4 ($err) — skipping"
+        continue
+    fi
+
+    if [ "$count" -eq 1 ]; then
+        name="$slug"
+    else
+        name="${slug}_$(printf '%03d' "$num")"
+    fi
+    out="$OUTDIR/${name}.mp4"
+
+    if [ -s "$out" ]; then
+        echo "  Episode $num -> ${name}.mp4 (exists, skipping)"
+        continue
+    fi
+
+    echo "  Episode $num -> ${name}.mp4"
+    # Download to a .part file and move on success, so an interrupted download is
+    # never mistaken for a finished one. gdvid.info serves byte ranges + needs no
+    # token, so a plain curl (with retries) suffices.
+    if curl -L --retry 5 --retry-delay 2 -A "$UA" -e 'https://hentaimama.io/' -o "${out}.part" "$mp4"; then
+        mv "${out}.part" "$out"
+    else
+        echo "    Download failed for episode $num"
+        rm -f "${out}.part"
+    fi
+done
+
+echo "Done. Files in $OUTDIR"

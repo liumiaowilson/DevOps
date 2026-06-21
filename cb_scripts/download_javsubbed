@@ -1,0 +1,286 @@
+# {
+#   "name": "download_javsubbed",
+#   "description": "Download a clip of a javsubbed.net video by detail URL between start/end seconds, at 480p. Resolves the emturbovid -> turbovidhls HLS stream, picks the 480p variant, downloads only the in-range PNG-wrapped TS segments (Google Drive), strips the PNG decoy prefix, and clips+encodes to 480p",
+#   "usage": "dev download_javsubbed <https://javsubbed.net/<slug>/> <start_seconds> <end_seconds>"
+# }
+url=$1
+start=$2
+end=$3
+
+# javsubbed.net is reachable directly (CORS-only restriction in the browser, not a
+# geo-block), so unlike download_madou there is no 'remote'/compute-automation mode:
+# every fetch here is a plain curl. The stream CDN (turbovidhls / Google Drive) sends
+# Access-Control-Allow-Origin: * and needs no token.
+
+if [ -z "$url" ]; then
+    echo 'Detail URL is required (e.g. https://javsubbed.net/<slug>/)'
+    exit 0
+fi
+case "$url" in
+    https://javsubbed.net/*|http://javsubbed.net/*) ;;
+    *) echo 'URL must be a https://javsubbed.net/ detail page'; exit 1 ;;
+esac
+# start/end must be non-negative numbers with end > start.
+isnum() { printf '%s' "$1" | grep -qE '^[0-9]+(\.[0-9]+)?$'; }
+if ! isnum "$start" || ! isnum "$end"; then
+    echo 'start_seconds and end_seconds are required and must be numbers'
+    exit 1
+fi
+if awk "BEGIN{exit !($end <= $start)}"; then
+    echo "end_seconds ($end) must be greater than start_seconds ($start)"
+    exit 1
+fi
+
+echo "Page:     $url"
+echo "Clip:     ${start}s -> ${end}s"
+
+UA="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+HOST="https://javsubbed.net/"
+EMB_REFERER="https://emturbovid.com/"
+
+# Run ffmpeg with a live "percent + ETA" line. Args: total duration in seconds, then ffmpeg args.
+# If FFMPEG_STDERR_LOG is set, ffmpeg's warnings/errors are captured to that file
+# (synchronously, so callers can grep it afterwards) instead of streaming to the terminal.
+ffmpeg_progress() {
+    local total=$1; shift
+    local errlog=${FFMPEG_STDERR_LOG:-/dev/stderr}
+    ffmpeg -y -loglevel warning -nostats -progress pipe:1 "$@" 2>"$errlog" |
+    awk -F'=' -v total="$total" '
+        $1 == "out_time_us" { cur = $2 / 1000000 }
+        $1 == "speed" {
+            spd = $2 + 0
+            pct = total > 0 ? cur / total * 100 : 0
+            if (pct > 100) pct = 100
+            eta = (spd > 0 && total > cur) ? (total - cur) / spd : 0
+            printf "\r  %5.1f%%  ETA %02d:%02d  (%sx) ", pct, eta / 60, eta % 60, spd
+            fflush()
+        }
+        $1 == "progress" && $2 == "end" { printf "\r  100.0%%  ETA 00:00            " }
+        END { printf "\n" }
+    '
+    return ${PIPESTATUS[0]}
+}
+
+OUTDIR="$HOME/Downloads/javsubbed"
+mkdir -p "$OUTDIR/playlists" "$OUTDIR/movies"
+
+tmpdir=$(mktemp -d)
+trap 'rm -rf "$tmpdir"' EXIT
+
+# 1. Movie name from the URL path slug (percent-decoded), sanitized for the filesystem.
+#    The slug is everything between 'https://javsubbed.net/' and the trailing slash
+#    (mirrors mypimJavSubbedBrowser's javNameFromUrl); query/hash are dropped.
+path=${url#*://javsubbed.net/}
+path=${path%%[?#]*}
+path=${path%/}
+movie=$(printf '%b' "${path//%/\\x}")
+movie=${movie//\//-}
+# javsubbed slugs can be very long; cap well under the 255-byte filename limit.
+movie=${movie:0:200}
+[ -z "$movie" ] && movie="javsubbed_video"
+echo "Movie:    $movie"
+
+# 2 + 3. Resolve the HLS stream: detail page -> emturbovid mirror -> embed page's
+#    inline urlPlay m3u8. A transient empty/blocked response yields no mirror/m3u8,
+#    so retry the whole resolve a few times rather than aborting on the first miss.
+maxResolveAttempts=5
+resolveAttempt=1
+m3u8Url=""
+while :; do
+    page=$(curl -s -m 30 -A "$UA" "$url")
+    embedUrl=$(printf '%s' "$page" | grep -oE 'https://emturbovid\.com/t/[a-z0-9]+' | head -1)
+    if [ -n "$embedUrl" ]; then
+        embed=$(curl -sL -m 30 -A "$UA" -e "$HOST" "$embedUrl")
+        # urlPlay = '<m3u8>'; fall back to the first .m3u8 on the page, then to
+        # building it from the <id> (matches the LWC's FETCH_STREAM_SCRIPT).
+        m3u8Url=$(printf '%s' "$embed" | grep -oE "urlPlay[[:space:]]*=[[:space:]]*['\"][^'\"]+\.m3u8[^'\"]*['\"]" | head -1 | grep -oE "https?://[^'\"]+\.m3u8[^'\"]*")
+        if [ -z "$m3u8Url" ]; then
+            m3u8Url=$(printf '%s' "$embed" | grep -oE "https?://[^\"'<> ]+\.m3u8[^\"'<> ]*" | head -1)
+        fi
+        if [ -z "$m3u8Url" ]; then
+            id=$(printf '%s' "$embedUrl" | grep -oE '[a-z0-9]+$')
+            [ -n "$id" ] && m3u8Url="https://cdn1.turboviplay.com/data3/${id}/${id}.m3u8"
+        fi
+    fi
+    [ -n "$m3u8Url" ] && break
+
+    echo 'Could not resolve the stream (no emturbovid mirror / m3u8)'
+    if [ "$resolveAttempt" -ge "$maxResolveAttempts" ]; then
+        echo "Giving up after $maxResolveAttempts attempts"
+        exit 1
+    fi
+    echo "Retrying the resolve ($resolveAttempt/$maxResolveAttempts)..."
+    resolveAttempt=$((resolveAttempt + 1))
+    sleep 2
+done
+echo "Stream:   $m3u8Url"
+
+# 4. Fetch the m3u8. If it is a master playlist (EXT-X-STREAM-INF), pick the variant
+#    whose RESOLUTION height is closest to 480 and fetch that media playlist; if it is
+#    already a media playlist, use it directly.
+curl -s -m 30 -A "$UA" -e "$EMB_REFERER" "$m3u8Url" -o "$tmpdir/top.m3u8" -w '' || true
+if [ ! -s "$tmpdir/top.m3u8" ]; then
+    echo 'Failed to fetch the m3u8'
+    exit 1
+fi
+mediaUrl="$m3u8Url"
+if grep -q 'EXT-X-STREAM-INF' "$tmpdir/top.m3u8"; then
+    mediaUrl=$(python3 - "$tmpdir/top.m3u8" "$m3u8Url" <<'PY'
+import sys, re, urllib.parse
+src, base = sys.argv[1], sys.argv[2]
+lines = open(src, encoding='utf-8', errors='ignore').read().splitlines()
+best = None  # (height_distance, height, url)
+for i, line in enumerate(lines):
+    if line.startswith('#EXT-X-STREAM-INF'):
+        m = re.search(r'RESOLUTION=\d+x(\d+)', line)
+        h = int(m.group(1)) if m else 0
+        # the URL is the next non-comment line
+        url = ''
+        for j in range(i + 1, len(lines)):
+            if lines[j] and not lines[j].startswith('#'):
+                url = lines[j].strip(); break
+        if not url:
+            continue
+        url = urllib.parse.urljoin(base, url)
+        dist = abs(h - 480)
+        if best is None or dist < best[0]:
+            best = (dist, h, url)
+if best:
+    sys.stderr.write('Variant:  %dp (closest to 480)\n' % best[1])
+    print(best[2])
+PY
+)
+    if [ -z "$mediaUrl" ]; then
+        echo 'Could not pick a variant from the master playlist'
+        exit 1
+    fi
+    curl -s -m 30 -A "$UA" -e "$EMB_REFERER" "$mediaUrl" -o "$tmpdir/media.m3u8" -w '' || true
+else
+    cp "$tmpdir/top.m3u8" "$tmpdir/media.m3u8"
+fi
+if [ ! -s "$tmpdir/media.m3u8" ]; then
+    echo 'Failed to fetch the media playlist'
+    exit 1
+fi
+
+# 5. Select only the segments overlapping [start, end]. Walk the EXTINF durations
+#    cumulatively so we download a bounded window instead of the whole VOD. Emits the
+#    in-range segment URLs (absolute) to segs.txt and prints the cumulative start time
+#    of the first selected segment (the ffmpeg seek offset).
+segStart=$(python3 - "$tmpdir/media.m3u8" "$mediaUrl" "$start" "$end" "$tmpdir/segs.txt" <<'PY'
+import sys, urllib.parse
+src, base, start, end, out = sys.argv[1], sys.argv[2], float(sys.argv[3]), float(sys.argv[4]), sys.argv[5]
+lines = open(src, encoding='utf-8', errors='ignore').read().splitlines()
+segs = []          # (cum_start, cum_end, url)
+t = 0.0
+dur = 0.0
+for line in lines:
+    if line.startswith('#EXTINF'):
+        try:
+            dur = float(line.split(':', 1)[1].split(',', 1)[0])
+        except (IndexError, ValueError):
+            dur = 0.0
+    elif line and not line.startswith('#'):
+        url = urllib.parse.urljoin(base, line.strip())
+        segs.append((t, t + dur, url))
+        t += dur
+total = t
+if end > total:
+    end = total
+chosen = [s for s in segs if s[1] > start and s[0] < end]
+if not chosen:
+    sys.stderr.write('No segments overlap the requested range (total %.2fs)\n' % total)
+    sys.exit(2)
+with open(out, 'w', encoding='utf-8') as f:
+    f.write('\n'.join(s[2] for s in chosen) + '\n')
+sys.stderr.write('Total:    %.2fs in playlist; selecting %d segment(s)\n' % (total, len(chosen)))
+print('%.6f' % chosen[0][0])
+PY
+)
+if [ $? -ne 0 ] || [ -z "$segStart" ] || [ ! -s "$tmpdir/segs.txt" ]; then
+    echo 'Failed to select the segment range'
+    exit 1
+fi
+segCount=$(grep -c . "$tmpdir/segs.txt")
+
+# Save the trimmed playlist of selected segments for reference.
+playlist="$OUTDIR/playlists/${movie}.m3u8"
+{ echo '#EXTM3U'; cat "$tmpdir/segs.txt"; } > "$playlist"
+echo "Playlist: $playlist ($segCount segments)"
+
+# 6. Download each selected segment (PNG-wrapped TS on Google Drive; UA only, no
+#    referer/token needed) with a small per-segment retry.
+echo "Downloading $segCount segment(s)..."
+i=0
+maxSegAttempts=5
+while IFS= read -r seg; do
+    [ -z "$seg" ] && continue
+    out=$(printf '%s/seg_%05d.bin' "$tmpdir" "$i")
+    segAttempt=1
+    while :; do
+        code=$(curl -s -m 60 -A "$UA" "$seg" -o "$out" -w '%{http_code}')
+        if [ "$code" = "200" ] && [ -s "$out" ]; then
+            break
+        fi
+        if [ "$segAttempt" -ge "$maxSegAttempts" ]; then
+            echo "Segment $i failed after $maxSegAttempts attempts (HTTP $code)"
+            exit 1
+        fi
+        segAttempt=$((segAttempt + 1))
+        sleep 1
+    done
+    i=$((i + 1))
+    printf '\r  %d/%d ' "$i" "$segCount"
+done < "$tmpdir/segs.txt"
+echo
+
+# 7. Strip the PNG decoy prefix from each segment and concatenate into one TS. Each
+#    chunk is a decoy PNG with the real MPEG-TS appended; strip everything before the
+#    first byte where three 188-byte-spaced 0x47 sync bytes line up (mirrors
+#    mypimJavSubbedBrowser's stripPngPrefix). A chunk already starting at 0x47 is
+#    copied as-is.
+python3 - "$tmpdir" "$segCount" "$tmpdir/clip.ts" <<'PY'
+import sys
+tmpdir, count, dst = sys.argv[1], int(sys.argv[2]), sys.argv[3]
+
+def strip(b):
+    if not b or b[0] == 0x47:
+        return b
+    limit = len(b) - 376
+    for i in range(limit):
+        if b[i] == 0x47 and b[i + 188] == 0x47 and b[i + 376] == 0x47:
+            return b[i:]
+    return b
+
+with open(dst, 'wb') as o:
+    for n in range(count):
+        with open('%s/seg_%05d.bin' % (tmpdir, n), 'rb') as f:
+            o.write(strip(f.read()))
+PY
+if [ ! -s "$tmpdir/clip.ts" ]; then
+    echo 'Failed to strip/concatenate segments'
+    exit 1
+fi
+
+# 8. Clip + encode to 480p. The concatenated TS starts at segStart (<= start), so seek
+#    by (start - segStart) and take (end - start). Output seeking (-ss after -i) gives a
+#    frame-accurate cut; a re-encode is required since the cut won't land on a keyframe.
+offset=$(awk "BEGIN{o=$start-$segStart; if(o<0)o=0; printf \"%.3f\", o}")
+clipDur=$(awk "BEGIN{printf \"%.3f\", $end-$start}")
+out="$OUTDIR/movies/${movie}.mp4"
+ffLog="$tmpdir/ffmpeg.log"
+echo "Encoding 480p clip (offset ${offset}s, length ${clipDur}s) -> $out"
+FFMPEG_STDERR_LOG="$ffLog" ffmpeg_progress "$clipDur" \
+    -i "$tmpdir/clip.ts" \
+    -ss "$offset" -t "$clipDur" \
+    -vf scale=-2:480 -c:v libx264 -crf 23 -preset veryfast \
+    -c:a aac -b:a 128k \
+    "$out"
+ffStatus=$?
+[ -s "$ffLog" ] && cat "$ffLog" >&2
+if [ "$ffStatus" -ne 0 ] || [ ! -f "$out" ]; then
+    echo 'Encode failed'
+    exit 1
+fi
+
+echo "Done: $out"

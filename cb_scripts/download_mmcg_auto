@@ -1,0 +1,98 @@
+# {
+#   "name": "download_mmcg_auto",
+#   "description": "Process the oldest N Pending MmCgQueueItem CustomData records from the mypim org: for each, take the 18av.mm-cg.com detail URL from Question__c and the clip range (start_time/end_time) from Answer__c, run dev download_mmcg on it, and mark the record Username__c='Done' on success. Aborts when the queue is empty or a step fails.",
+#   "usage": "dev download_mmcg_auto [N]"
+# }
+alias=mypim
+N=${1:-1}
+
+if ! [[ "$N" =~ ^[1-9][0-9]*$ ]]; then
+    echo "Error: N must be a positive integer (got: '$N')"
+    exit 1
+fi
+
+# Retry an org/sf operation up to 3 times with a 5s pause between attempts.
+retry() {
+    local attempt=1
+    while :; do
+        "$@" && return 0
+        if [ "$attempt" -ge 3 ]; then
+            return 1
+        fi
+        echo "  Attempt $attempt failed; retrying in 5s..." >&2
+        sleep 5
+        attempt=$((attempt+1))
+    done
+}
+
+queryOldest() {
+    sf data query \
+        -q "SELECT Id, Question__c, Answer__c FROM Item__c WHERE Type__c = 'CustomData' AND Parent__r.Name = 'MmCgQueueItem' AND Username__c = 'Pending' ORDER BY CreatedDate ASC LIMIT 1" \
+        -o "$alias" --json
+}
+
+markDone() {
+    sf data update record -s Item__c -i "$1" -v "Username__c=Done" -o "$alias" --json
+}
+
+i=0
+while [ "$i" -lt "$N" ]; do
+    i=$((i+1))
+    echo "===== [$i/$N] $(date '+%Y-%m-%d %H:%M:%S') ====="
+
+    result=$(retry queryOldest)
+    if [ $? -ne 0 ]; then
+        echo "Query failed after retries; aborting."
+        exit 1
+    fi
+
+    totalSize=$(printf '%s' "$result" | jq -r '.result.totalSize')
+    if [ "$totalSize" = "0" ] || [ -z "$totalSize" ] || [ "$totalSize" = "null" ]; then
+        echo "No more Pending MmCgQueueItem records; done."
+        exit 0
+    fi
+
+    recordId=$(printf '%s' "$result" | jq -r '.result.records[0].Id')
+    mmcg_url=$(printf '%s' "$result" | jq -r '.result.records[0].Question__c')
+    answer=$(printf '%s' "$result" | jq -r '.result.records[0].Answer__c')
+
+    echo "Record:   $recordId"
+
+    # mm-cg detail URLs (…/chinese_content/<id>/<slug>.html) need the numeric id, which
+    # isn't derivable from the slug, so the browser stores the full URL in Question__c.
+    case "$mmcg_url" in
+        https://18av.mm-cg.com/*|http://18av.mm-cg.com/*) ;;
+        *)
+            echo "Record $recordId has no valid mm-cg detail URL in Question__c ('$mmcg_url'); aborting (record kept)."
+            exit 1
+            ;;
+    esac
+
+    # Answer__c holds the clip range as JSON: {"start_time":N,"end_time":M} (whole
+    # seconds), set by the browser's Set Start / Set End. download_mmcg requires both,
+    # so a missing/malformed range is a data problem -> abort (record kept).
+    start=$(printf '%s' "$answer" | jq -r '.start_time' 2>/dev/null)
+    end=$(printf '%s' "$answer" | jq -r '.end_time' 2>/dev/null)
+    if ! [[ "$start" =~ ^[0-9]+$ ]] || ! [[ "$end" =~ ^[0-9]+$ ]]; then
+        echo "Record $recordId has no valid clip range in Answer__c ('$answer'); aborting (record kept)."
+        exit 1
+    fi
+
+    echo "URL:      $mmcg_url"
+    echo "Clip:     ${start}s -> ${end}s"
+
+    sh "$ScriptsDir/download_mmcg" "$mmcg_url" "$start" "$end"
+    dl_rc=$?
+    if [ "$dl_rc" -ne 0 ]; then
+        echo "download_mmcg failed for $mmcg_url; aborting (record kept)."
+        exit 1
+    fi
+
+    if ! retry markDone "$recordId"; then
+        echo "Failed to mark record $recordId Done after retries; aborting."
+        exit 1
+    fi
+    echo "Marked Done: $recordId"
+done
+
+echo "Reached N=$N iterations; stopping."

@@ -1,0 +1,366 @@
+# {
+#   "name": "download_mmcg",
+#   "description": "Download a clip of an 18av.mm-cg.com video by detail URL between start/end seconds, at 480p. Resolves the obfuscated/AES-encrypted player id (node) -> play.php m3u8 (lowest rendition), downloads only the in-range AES-128 TS segments + key (with the required mm-cg Referer), and clips+encodes to 480p.",
+#   "usage": "dev download_mmcg <https://18av.mm-cg.com/...detail.html> <start_seconds> <end_seconds>"
+# }
+url=$1
+start=$2
+end=$3
+
+# 18av.mm-cg.com is reachable directly from here (its detail page is only geo-stripped
+# for some regions; this machine gets the full player block), so there is no remote
+# mode — mirrors download_javsubbed. The stream's segments/key DO require a mm-cg
+# Referer (404 without), so they're fetched with curl -e and fed to ffmpeg as a local
+# AES playlist (ffmpeg's -referer doesn't propagate through crypto+https to segments).
+
+if [ -z "$url" ]; then
+    echo 'Detail URL is required (e.g. https://18av.mm-cg.com/zh/chinese_content/<id>/<slug>.html)'
+    exit 0
+fi
+case "$url" in
+    https://18av.mm-cg.com/*|http://18av.mm-cg.com/*) ;;
+    *) echo 'URL must be a https://18av.mm-cg.com/ detail page'; exit 1 ;;
+esac
+isnum() { printf '%s' "$1" | grep -qE '^[0-9]+(\.[0-9]+)?$'; }
+if ! isnum "$start" || ! isnum "$end"; then
+    echo 'start_seconds and end_seconds are required and must be numbers'
+    exit 1
+fi
+if awk "BEGIN{exit !($end <= $start)}"; then
+    echo "end_seconds ($end) must be greater than start_seconds ($start)"
+    exit 1
+fi
+
+echo "Page:     $url"
+echo "Clip:     ${start}s -> ${end}s"
+
+UA="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+# The stream CDN gates segments + AES key behind a mm-cg Referer.
+STREAM_REFERER="https://18av.mm-cg.com/"
+
+# Run ffmpeg with a live "percent + ETA" line. Args: total duration in seconds, then ffmpeg args.
+# If FFMPEG_STDERR_LOG is set, ffmpeg's warnings/errors are captured to that file
+# (synchronously, so callers can grep it afterwards) instead of streaming to the terminal.
+ffmpeg_progress() {
+    local total=$1; shift
+    local errlog=${FFMPEG_STDERR_LOG:-/dev/stderr}
+    ffmpeg -y -loglevel warning -nostats -progress pipe:1 "$@" 2>"$errlog" |
+    awk -F'=' -v total="$total" '
+        $1 == "out_time_us" { cur = $2 / 1000000 }
+        $1 == "speed" {
+            spd = $2 + 0
+            pct = total > 0 ? cur / total * 100 : 0
+            if (pct > 100) pct = 100
+            eta = (spd > 0 && total > cur) ? (total - cur) / spd : 0
+            printf "\r  %5.1f%%  ETA %02d:%02d  (%sx) ", pct, eta / 60, eta % 60, spd
+            fflush()
+        }
+        $1 == "progress" && $2 == "end" { printf "\r  100.0%%  ETA 00:00            " }
+        END { printf "\n" }
+    '
+    return ${PIPESTATUS[0]}
+}
+
+# Render one progress line in the SAME format as ffmpeg_progress, for the curl-based
+# segment download. Args: current media-seconds downloaded, total media-seconds, speed
+# (media-seconds per wall-second = the same "Nx realtime" ffmpeg reports).
+render_progress() {
+    awk -v cur="$1" -v total="$2" -v spd="$3" 'BEGIN{
+        pct = total > 0 ? cur / total * 100 : 0
+        if (pct > 100) pct = 100
+        eta = (spd > 0 && total > cur) ? (total - cur) / spd : 0
+        printf "\r  %5.1f%%  ETA %02d:%02d  (%.1fx) ", pct, eta / 60, eta % 60, spd
+    }'
+}
+
+OUTDIR="$HOME/Downloads/mmcg"
+mkdir -p "$OUTDIR/playlists" "$OUTDIR/movies"
+
+tmpdir=$(mktemp -d)
+trap 'rm -rf "$tmpdir"' EXIT
+
+# The embedded node/python scripts are written to files here (NOT run via heredoc inside
+# $(...) — bash's command-substitution tokenizer mis-parses the unbalanced quotes in JS
+# regex literals), then invoked by path below.
+
+# resolve.cjs: decode the player id + resolve the lowest-size m3u8 (mirrors the LWC).
+cat > "$tmpdir/resolve.cjs" <<'NODE'
+const crypto = require('crypto');
+const fs = require('fs');
+const detailUrl = process.env.DETAIL_URL;
+const UA = process.env.UA;
+const html = fs.readFileSync(process.argv[2], 'utf8');
+(async () => {
+    // parseDetail (verbatim from the LWC).
+    const radM = /hcdeedg252\s*=\s*'?(\d+)'?/.exec(html);
+    const xorM = /hadeedg252\s*=\s*'?(\d+)'?/.exec(html);
+    const keyM = /argdeqweqweqwe\s*=\s*'([^']+)'/.exec(html);
+    const ivM = /hdddedg252\s*=\s*'([^']+)'/.exec(html);
+    const entM = /'([0-9a-z]{20,})','<iframe[\s\S]*?','(\/\/[^']*numresolution=1080[^']*id=)'/i.exec(html)
+        || /'([0-9a-z]{20,})','<iframe[\s\S]*?','(\/\/[^']*play\.php[^']*id=)'/i.exec(html);
+    if(!radM || !xorM || !keyM || !ivM || !entM) { console.error('parseDetail failed'); process.exit(1); }
+    let radix = parseInt(radM[1], 10);
+    radix = radix > 25 ? radix % 25 : radix;
+    const f = { radix, xor: parseInt(xorM[1], 10), key: keyM[1], iv: ivM[1], encoded: entM[1], playPrefix: entM[2] };
+    // Decode the real id (verbatim from FETCH_STREAM_SCRIPT).
+    const delim = String.fromCharCode(f.radix + 97);
+    const b64 = String(f.encoded).split(delim).map(t => String.fromCharCode(parseInt(t, f.radix) ^ f.xor)).join('');
+    let realId;
+    try {
+        const decipher = crypto.createDecipheriv('aes-128-cbc', Buffer.from(f.key, 'utf8'), Buffer.from(f.iv, 'utf8'));
+        realId = Buffer.concat([decipher.update(Buffer.from(b64, 'base64')), decipher.final()]).toString('utf8');
+    }
+    catch(e) { console.error('id decrypt failed: ' + (e && e.message)); process.exit(1); }
+    const playUrl = 'https:' + f.playPrefix + realId;
+    const pr = await fetch(playUrl, { headers: { 'User-Agent': UA, 'Accept-Encoding': 'identity', 'Referer': detailUrl } });
+    if(!pr.ok) { console.error('play.php HTTP ' + pr.status); process.exit(1); }
+    const phtml = await pr.text();
+    const srcRe = /\{\s*src:\s*'([^']+\.m3u8[^']*)'[^}]*?size:\s*(\d+)/gi;
+    let sm, best = null, bestSize = Infinity;
+    while((sm = srcRe.exec(phtml)) !== null) {
+        const size = parseInt(sm[2], 10);
+        if(size < bestSize) { bestSize = size; best = sm[1]; }
+    }
+    if(!best) {
+        const anyM = /(https?:\/\/[^'"\s<>]+\.m3u8[^'"\s<>]*)/i.exec(phtml);
+        if(anyM) best = anyM[1];
+    }
+    if(!best) { console.error('no m3u8 in player page'); process.exit(1); }
+    process.stdout.write(best);
+})().catch(e => { console.error(e && e.message || String(e)); process.exit(1); });
+NODE
+
+# pickvariant.py: if the m3u8 is a master playlist, pick the variant closest to 480p.
+cat > "$tmpdir/pickvariant.py" <<'PY'
+import sys, re, urllib.parse
+lines = open(sys.argv[1], encoding='utf-8', errors='ignore').read().splitlines()
+base = sys.argv[2]
+best = None
+for i, line in enumerate(lines):
+    if line.startswith('#EXT-X-STREAM-INF'):
+        m = re.search(r'RESOLUTION=\d+x(\d+)', line)
+        h = int(m.group(1)) if m else 0
+        url = ''
+        for j in range(i + 1, len(lines)):
+            if lines[j] and not lines[j].startswith('#'):
+                url = lines[j].strip(); break
+        if not url:
+            continue
+        url = urllib.parse.urljoin(base, url)
+        dist = abs(h - 480)
+        if best is None or dist < best[0]:
+            best = (dist, h, url)
+if best:
+    sys.stderr.write('Variant:  %dp (closest to 480)\n' % best[1])
+    print(best[2])
+PY
+
+# select.py: pick the in-range segments and build the local + reference playlists.
+cat > "$tmpdir/select.py" <<'PY'
+import sys, re, math, urllib.parse
+src, base, start, end, tmpdir, refOut = sys.argv[1], sys.argv[2], float(sys.argv[3]), float(sys.argv[4]), sys.argv[5], sys.argv[6]
+lines = open(src, encoding='utf-8', errors='ignore').read().splitlines()
+# First EXT-X-KEY (mm-cg uses a single key with an explicit IV, so a segment subset
+# still decrypts). Capture its full attribute list and resolve the URI to absolute.
+keyLine = next((l for l in lines if l.startswith('#EXT-X-KEY')), '')
+keyUrl = ''
+keyLineLocal = ''
+if keyLine:
+    m = re.search(r'URI="([^"]+)"', keyLine)
+    if m:
+        keyUrl = urllib.parse.urljoin(base, m.group(1))
+        keyLineLocal = keyLine[:m.start(1)] + 'key.key' + keyLine[m.end(1):]
+    else:
+        keyLineLocal = keyLine
+segs = []   # (cum_start, cum_end, dur, url)
+t = 0.0; dur = 0.0
+for line in lines:
+    if line.startswith('#EXTINF'):
+        try: dur = float(line.split(':', 1)[1].split(',', 1)[0])
+        except (IndexError, ValueError): dur = 0.0
+    elif line and not line.startswith('#'):
+        segs.append((t, t + dur, dur, urllib.parse.urljoin(base, line.strip())))
+        t += dur
+total = t
+if end > total: end = total
+chosen = [s for s in segs if s[1] > start and s[0] < end]
+if not chosen:
+    sys.stderr.write('No segments overlap the requested range (total %.2fs)\n' % total)
+    sys.exit(2)
+targetDur = int(math.ceil(max(s[2] for s in chosen))) or 10
+with open(tmpdir + '/segs.txt', 'w', encoding='utf-8') as f:
+    f.write('\n'.join('%.6f\t%s' % (s[2], s[3]) for s in chosen) + '\n')
+with open(tmpdir + '/keyurl.txt', 'w', encoding='utf-8') as f:
+    f.write(keyUrl)
+# Local playlist ffmpeg reads (key.key + seg_NNNNN.ts, in tmpdir alongside it).
+loc = ['#EXTM3U', '#EXT-X-VERSION:3', '#EXT-X-TARGETDURATION:%d' % targetDur, '#EXT-X-MEDIA-SEQUENCE:0', '#EXT-X-PLAYLIST-TYPE:VOD']
+if keyLineLocal: loc.append(keyLineLocal)
+for i, s in enumerate(chosen):
+    loc.append('#EXTINF:%.6f,' % s[2]); loc.append('seg_%05d.ts' % i)
+loc.append('#EXT-X-ENDLIST')
+open(tmpdir + '/clip.m3u8', 'w', encoding='utf-8').write('\n'.join(loc) + '\n')
+# Reference playlist with the REMOTE urls (key + segments) for debugging / re-download.
+ref = ['#EXTM3U', '#EXT-X-VERSION:3', '#EXT-X-TARGETDURATION:%d' % targetDur, '#EXT-X-MEDIA-SEQUENCE:0', '#EXT-X-PLAYLIST-TYPE:VOD']
+if keyLine: ref.append(re.sub(r'URI="[^"]+"', 'URI="%s"' % keyUrl, keyLine) if keyUrl else keyLine)
+for s in chosen:
+    ref.append('#EXTINF:%.6f,' % s[2]); ref.append(s[3])
+ref.append('#EXT-X-ENDLIST')
+open(refOut, 'w', encoding='utf-8').write('\n'.join(ref) + '\n')
+sys.stderr.write('Total:    %.2fs in playlist; selecting %d segment(s)\n' % (total, len(chosen)))
+print('%.6f %.6f %d' % (chosen[0][0], sum(s[2] for s in chosen), 1 if keyUrl else 0))
+PY
+
+# 1. Movie name from the URL's last path segment (percent-decoded), sanitized.
+path=${url%%[?#]*}
+base=${path##*/}
+slug=${base%.html}
+movie=$(printf '%b' "${slug//%/\\x}")
+movie=${movie//\//-}
+movie=${movie:0:200}
+[ -z "$movie" ] && movie="mmcg_video"
+echo "Movie:    $movie"
+
+# 2. Fetch the detail page (identity encoding for parity with the resolver; this CDN can
+#    vary the body by Accept-Encoding). Retry the whole fetch a few times, and verify the
+#    player block is present (a geo-stripped page lacks it).
+maxPageAttempts=5
+pageAttempt=1
+while :; do
+    curl -s -m 30 -A "$UA" -H 'Accept-Encoding: identity' "$url" -o "$tmpdir/detail.html" -w '' || true
+    if [ -s "$tmpdir/detail.html" ] && grep -q 'argdeqweqweqwe' "$tmpdir/detail.html"; then
+        break
+    fi
+    echo 'Detail page missing the player block (empty/blocked or geo-stripped)'
+    if [ "$pageAttempt" -ge "$maxPageAttempts" ]; then
+        echo "Giving up after $maxPageAttempts attempts"
+        exit 1
+    fi
+    echo "Retrying the page fetch ($pageAttempt/$maxPageAttempts)..."
+    pageAttempt=$((pageAttempt + 1))
+    sleep 2
+done
+
+# 3. Resolve the m3u8 (node): decode the XOR/base-N + AES-128-CBC player id, GET
+#    play.php?numresolution=1080&id=<id> (Referer = the detail page), and pick the
+#    LOWEST-size rendition (downscaled to 480p below).
+maxResolveAttempts=5
+resolveAttempt=1
+m3u8Url=""
+while :; do
+    m3u8Url=$(DETAIL_URL="$url" UA="$UA" node "$tmpdir/resolve.cjs" "$tmpdir/detail.html")
+    if [ $? -eq 0 ] && [ -n "$m3u8Url" ]; then
+        break
+    fi
+    echo 'Could not resolve the stream'
+    if [ "$resolveAttempt" -ge "$maxResolveAttempts" ]; then
+        echo "Giving up after $maxResolveAttempts attempts"
+        exit 1
+    fi
+    echo "Retrying the resolve ($resolveAttempt/$maxResolveAttempts)..."
+    resolveAttempt=$((resolveAttempt + 1))
+    sleep 2
+done
+echo "Stream:   $m3u8Url"
+
+# 4. Fetch the media playlist (with the mm-cg Referer). If it is a master playlist, pick
+#    the variant whose RESOLUTION height is closest to 480.
+curl -s -m 30 -A "$UA" -e "$STREAM_REFERER" "$m3u8Url" -o "$tmpdir/top.m3u8" -w '' || true
+if [ ! -s "$tmpdir/top.m3u8" ]; then
+    echo 'Failed to fetch the m3u8'
+    exit 1
+fi
+mediaUrl="$m3u8Url"
+if grep -q 'EXT-X-STREAM-INF' "$tmpdir/top.m3u8"; then
+    mediaUrl=$(python3 "$tmpdir/pickvariant.py" "$tmpdir/top.m3u8" "$m3u8Url")
+    [ -z "$mediaUrl" ] && { echo 'Could not pick a variant from the master playlist'; exit 1; }
+    curl -s -m 30 -A "$UA" -e "$STREAM_REFERER" "$mediaUrl" -o "$tmpdir/media.m3u8" -w '' || true
+else
+    cp "$tmpdir/top.m3u8" "$tmpdir/media.m3u8"
+fi
+if [ ! -s "$tmpdir/media.m3u8" ]; then
+    echo 'Failed to fetch the media playlist'
+    exit 1
+fi
+
+# 5. Select the in-range segments and build the local AES playlist + reference playlist.
+selInfo=$(python3 "$tmpdir/select.py" "$tmpdir/media.m3u8" "$mediaUrl" "$start" "$end" "$tmpdir" "$OUTDIR/playlists/${movie}.m3u8")
+if [ $? -ne 0 ] || [ -z "$selInfo" ] || [ ! -s "$tmpdir/segs.txt" ]; then
+    echo 'Failed to select the segment range'
+    exit 1
+fi
+# shellcheck disable=SC2086  # selInfo is three space-separated values from python
+set -- $selInfo
+segStart=$1
+selTotal=$2
+hasKey=$3
+segCount=$(grep -c . "$tmpdir/segs.txt")
+echo "Playlist: $OUTDIR/playlists/${movie}.m3u8 ($segCount segments)"
+
+# 6a. Download the AES key (with the mm-cg Referer) if the stream is encrypted.
+if [ "$hasKey" = "1" ]; then
+    keyUrl=$(cat "$tmpdir/keyurl.txt")
+    code=$(curl -s -m 30 -A "$UA" -e "$STREAM_REFERER" "$keyUrl" -o "$tmpdir/key.key" -w '%{http_code}')
+    if [ "$code" != "200" ] || [ ! -s "$tmpdir/key.key" ]; then
+        echo "Failed to fetch the AES key (HTTP $code)"
+        exit 1
+    fi
+fi
+
+# 6b. Download each selected segment (with the mm-cg Referer) into the tmpdir, with a
+#     small per-segment retry. Shows the same percent/ETA/speed bar as the encode below,
+#     measured by media-seconds downloaded over wall time.
+echo "Downloading $segCount segment(s)..."
+i=0
+acc=0
+maxSegAttempts=5
+t0=$(date +%s)
+TAB=$(printf '\t')
+while IFS="$TAB" read -r dur seg; do
+    [ -z "$seg" ] && continue
+    out=$(printf '%s/seg_%05d.ts' "$tmpdir" "$i")
+    segAttempt=1
+    while :; do
+        code=$(curl -s -m 60 -A "$UA" -e "$STREAM_REFERER" "$seg" -o "$out" -w '%{http_code}')
+        if [ "$code" = "200" ] && [ -s "$out" ]; then
+            break
+        fi
+        if [ "$segAttempt" -ge "$maxSegAttempts" ]; then
+            echo "Segment $i failed after $maxSegAttempts attempts (HTTP $code)"
+            exit 1
+        fi
+        segAttempt=$((segAttempt + 1))
+        sleep 1
+    done
+    i=$((i + 1))
+    elapsed=$(( $(date +%s) - t0 )); [ "$elapsed" -lt 1 ] && elapsed=1
+    acc=$(awk "BEGIN{printf \"%.6f\", $acc + $dur}")
+    spd=$(awk "BEGIN{printf \"%.6f\", $acc / $elapsed}")
+    render_progress "$acc" "$selTotal" "$spd"
+done < "$tmpdir/segs.txt"
+printf "\r  100.0%%  ETA 00:00            \n"
+
+# 7. Clip + encode to 480p. ffmpeg reads the LOCAL playlist (file + crypto for the AES
+#    key/segments; -allowed_extensions ALL since ffmpeg 8 is picky). The local segments
+#    start at segStart (<= start), so seek by (start - segStart) and take (end - start).
+#    Output seeking (-ss after -i) gives a frame-accurate cut; a re-encode is required
+#    since the cut won't land on a keyframe and the source is downscaled to 480p.
+offset=$(awk "BEGIN{o=$start-$segStart; if(o<0)o=0; printf \"%.3f\", o}")
+clipDur=$(awk "BEGIN{printf \"%.3f\", $end-$start}")
+out="$OUTDIR/movies/${movie}.mp4"
+ffLog="$tmpdir/ffmpeg.log"
+echo "Encoding 480p clip (offset ${offset}s, length ${clipDur}s) -> $out"
+FFMPEG_STDERR_LOG="$ffLog" ffmpeg_progress "$clipDur" \
+    -protocol_whitelist file,crypto -allowed_extensions ALL \
+    -i "$tmpdir/clip.m3u8" \
+    -ss "$offset" -t "$clipDur" \
+    -vf scale=-2:480 -c:v libx264 -crf 23 -preset veryfast \
+    -c:a aac -b:a 128k \
+    "$out"
+ffStatus=$?
+[ -s "$ffLog" ] && cat "$ffLog" >&2
+if [ "$ffStatus" -ne 0 ] || [ ! -f "$out" ]; then
+    echo 'Encode failed'
+    exit 1
+fi
+
+echo "Done: $out"

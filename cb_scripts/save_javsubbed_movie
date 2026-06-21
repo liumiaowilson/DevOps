@@ -1,0 +1,13 @@
+# {
+#   "name": "save_javsubbed_movie",
+#   "description": "Scrape the javsubbed.net poster + title for a downloaded movie, upload the poster to pCloud, summarize/describe/probe the local file, and create a Movie Item__c record. javsubbed.net is reachable directly, so there is no 'remote' mode (unlike save_madou_movie).",
+#   "usage": "dev save_javsubbed_movie <path/to/movie.mp4>"
+# }
+filePath=$1
+
+if [ -z "$filePath" ]; then
+    echo 'Movie file path is required'
+    exit 1
+fi
+
+sf mypim run script -o mypim -f ~/DevOps/cb_js/save_javsubbed_movie.js "$filePath"

@@ -1,10 +1,11 @@
 # {
 #   "name": "download_mmcg_auto",
-#   "description": "Process the oldest N Pending MmCgQueueItem CustomData records from the mypim org: for each, take the 18av.mm-cg.com detail URL from Question__c and the clip range (start_time/end_time) from Answer__c, run dev download_mmcg on it, and mark the record Username__c='Done' on success. Aborts when the queue is empty or a step fails.",
-#   "usage": "dev download_mmcg_auto [N]"
+#   "description": "Process the oldest N Pending MmCgQueueItem CustomData records from the mypim org: for each, take the 18av.mm-cg.com detail URL from Question__c and the clip range (start_time/end_time) from Answer__c, run dev download_mmcg on it, and mark the record Username__c='Done' on success. Aborts when the queue is empty or a step fails. Pass 'remote' to fetch the detail page through the Cloudflare worker (delegated to download_mmcg).",
+#   "usage": "dev download_mmcg_auto [N] [remote]"
 # }
 alias=mypim
 N=${1:-1}
+mode=$2                         # optional: 'remote' to fetch the detail page through the Cloudflare worker
 
 if ! [[ "$N" =~ ^[1-9][0-9]*$ ]]; then
     echo "Error: N must be a positive integer (got: '$N')"
@@ -81,7 +82,7 @@ while [ "$i" -lt "$N" ]; do
     echo "URL:      $mmcg_url"
     echo "Clip:     ${start}s -> ${end}s"
 
-    sh "$ScriptsDir/download_mmcg" "$mmcg_url" "$start" "$end"
+    sh "$ScriptsDir/download_mmcg" "$mmcg_url" "$start" "$end" "$mode"
     dl_rc=$?
     if [ "$dl_rc" -ne 0 ]; then
         echo "download_mmcg failed for $mmcg_url; aborting (record kept)."

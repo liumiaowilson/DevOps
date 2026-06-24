@@ -1,17 +1,31 @@
 # {
 #   "name": "download_mmcg",
-#   "description": "Download a clip of an 18av.mm-cg.com video by detail URL between start/end seconds, at 480p. Resolves the obfuscated/AES-encrypted player id (node) -> play.php m3u8 (lowest rendition), downloads only the in-range AES-128 TS segments + key (with the required mm-cg Referer), and clips+encodes to 480p.",
-#   "usage": "dev download_mmcg <https://18av.mm-cg.com/...detail.html> <start_seconds> <end_seconds>"
+#   "description": "Download a clip of an 18av.mm-cg.com video by detail URL between start/end seconds, at 480p. Resolves the obfuscated/AES-encrypted player id (node) -> play.php m3u8 (lowest rendition), downloads only the in-range AES-128 TS segments + key (with the required mm-cg Referer), and clips+encodes to 480p. Pass 'remote' (when running from a region the detail page is geo-stripped for) to fetch the detail page through the same Cloudflare worker the LWC browser uses (mypimMmCgBrowser); override the worker via MMCG_WORKER.",
+#   "usage": "dev download_mmcg <https://18av.mm-cg.com/...detail.html> <start_seconds> <end_seconds> [remote]"
 # }
 url=$1
 start=$2
 end=$3
+mode=$4                         # optional: 'remote' to fetch the detail page through the Cloudflare worker
 
-# 18av.mm-cg.com is reachable directly from here (its detail page is only geo-stripped
-# for some regions; this machine gets the full player block), so there is no remote
-# mode — mirrors download_javsubbed. The stream's segments/key DO require a mm-cg
-# Referer (404 without), so they're fetched with curl -e and fed to ffmpeg as a local
-# AES playlist (ffmpeg's -referer doesn't propagate through crypto+https to segments).
+# 18av.mm-cg.com is reachable directly from here when this machine egresses from a
+# region the detail page is NOT geo-stripped for (it gets the full player block); that
+# is the default, direct path. The stream's segments/key DO require a mm-cg Referer
+# (404 without), so they're fetched with curl -e and fed to ffmpeg as a local AES
+# playlist (ffmpeg's -referer doesn't propagate through crypto+https to segments).
+#
+# 'remote' covers running from a region that can't reach 18av.mm-cg.com at all (TLS
+# reset, not just a geo-stripped body). Both fetches that hit that host go through the
+# Cloudflare worker (MMCG_WORKER) — the DETAIL PAGE here, and play.php inside resolve.cjs
+# (the worker injects the mm-cg Referer itself). The m3u8 playlist + segments + AES key
+# live on a separate CDN (streamfastpro.com) that IS reachable directly, so those curl
+# fetches — and ffmpeg, which only reads local files — stay direct.
+REMOTE=0
+[ "$mode" = "remote" ] && REMOTE=1
+# The detail-page proxy: the same Cloudflare worker mypimMmCgBrowser uses (env-overridable).
+MMCG_WORKER=${MMCG_WORKER:-https://mmcg-proxy.lockleeliumiaowilson.workers.dev}
+# URL-encode for the worker's ?url= query (python3 is already required below).
+urlencode() { python3 -c 'import urllib.parse,sys;sys.stdout.write(urllib.parse.quote(sys.argv[1], safe=""))' "$1"; }
 
 if [ -z "$url" ]; then
     echo 'Detail URL is required (e.g. https://18av.mm-cg.com/zh/chinese_content/<id>/<slug>.html)'
@@ -37,6 +51,16 @@ echo "Clip:     ${start}s -> ${end}s"
 UA="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 # The stream CDN gates segments + AES key behind a mm-cg Referer.
 STREAM_REFERER="https://18av.mm-cg.com/"
+
+# In remote mode, verify the worker is reachable once up front (fail fast rather than
+# discovering it mid-fetch after the retry loop burns through its attempts).
+if [ "$REMOTE" = "1" ]; then
+    echo "Remote mode: detail page via Cloudflare worker ($MMCG_WORKER)"
+    if ! curl -s --max-time 10 -o /dev/null "$MMCG_WORKER/?url=$(urlencode "$STREAM_REFERER")"; then
+        echo "Cloudflare worker $MMCG_WORKER is not reachable (override via MMCG_WORKER)." >&2
+        exit 1
+    fi
+fi
 
 # Run ffmpeg with a live "percent + ETA" line. Args: total duration in seconds, then ffmpeg args.
 # If FFMPEG_STDERR_LOG is set, ffmpeg's warnings/errors are captured to that file
@@ -112,7 +136,12 @@ const html = fs.readFileSync(process.argv[2], 'utf8');
     }
     catch(e) { console.error('id decrypt failed: ' + (e && e.message)); process.exit(1); }
     const playUrl = 'https:' + f.playPrefix + realId;
-    const pr = await fetch(playUrl, { headers: { 'User-Agent': UA, 'Accept-Encoding': 'identity', 'Referer': detailUrl } });
+    // play.php is on 18av.mm-cg.com, which is unreachable from a remote region. When a
+    // worker is provided, fetch it through the same Cloudflare worker as the detail page
+    // (it injects the mm-cg Referer). The m3u8 it returns points at a directly-reachable CDN.
+    const worker = process.env.MMCG_WORKER;
+    const fetchUrl = worker ? worker + '/?url=' + encodeURIComponent(playUrl) : playUrl;
+    const pr = await fetch(fetchUrl, { headers: { 'User-Agent': UA, 'Accept-Encoding': 'identity', 'Referer': detailUrl } });
     if(!pr.ok) { console.error('play.php HTTP ' + pr.status); process.exit(1); }
     const phtml = await pr.text();
     const srcRe = /\{\s*src:\s*'([^']+\.m3u8[^']*)'[^}]*?size:\s*(\d+)/gi;
@@ -225,8 +254,15 @@ echo "Movie:    $movie"
 #    player block is present (a geo-stripped page lacks it).
 maxPageAttempts=5
 pageAttempt=1
+# Direct by default; remote routes the (geo-stripped) detail page through the worker,
+# which returns the same HTML, so the player-block check + downstream parsing are unchanged.
+if [ "$REMOTE" = "1" ]; then
+    pageUrl="$MMCG_WORKER/?url=$(urlencode "$url")"
+else
+    pageUrl="$url"
+fi
 while :; do
-    curl -s -m 30 -A "$UA" -H 'Accept-Encoding: identity' "$url" -o "$tmpdir/detail.html" -w '' || true
+    curl -s -m 30 -A "$UA" -H 'Accept-Encoding: identity' "$pageUrl" -o "$tmpdir/detail.html" -w '' || true
     if [ -s "$tmpdir/detail.html" ] && grep -q 'argdeqweqweqwe' "$tmpdir/detail.html"; then
         break
     fi
@@ -242,12 +278,14 @@ done
 
 # 3. Resolve the m3u8 (node): decode the XOR/base-N + AES-128-CBC player id, GET
 #    play.php?numresolution=1080&id=<id> (Referer = the detail page), and pick the
-#    LOWEST-size rendition (downscaled to 480p below).
+#    LOWEST-size rendition (downscaled to 480p below). In remote mode play.php (on the
+#    blocked mm-cg host) is fetched through the worker — MMCG_WORKER, else empty/direct.
+[ "$REMOTE" = "1" ] && resolveWorker="$MMCG_WORKER" || resolveWorker=""
 maxResolveAttempts=5
 resolveAttempt=1
 m3u8Url=""
 while :; do
-    m3u8Url=$(DETAIL_URL="$url" UA="$UA" node "$tmpdir/resolve.cjs" "$tmpdir/detail.html")
+    m3u8Url=$(DETAIL_URL="$url" UA="$UA" MMCG_WORKER="$resolveWorker" node "$tmpdir/resolve.cjs" "$tmpdir/detail.html")
     if [ $? -eq 0 ] && [ -n "$m3u8Url" ]; then
         break
     fi

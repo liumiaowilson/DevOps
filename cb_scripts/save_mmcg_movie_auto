@@ -1,9 +1,10 @@
 # {
 #   "name": "save_mmcg_movie_auto",
-#   "description": "Iterate top-level files in a folder (alphabetical) and run save_mmcg_movie for each, retrying each file on transient failures before aborting. Records progress in a sidecar file so re-running the same folder resumes where it left off. No 'remote' mode (18av.mm-cg.com is reachable directly).",
-#   "usage": "dev save_mmcg_movie_auto <folder>"
+#   "description": "Iterate top-level files in a folder (alphabetical) and run save_mmcg_movie for each, retrying each file on transient failures before aborting. Records progress in a sidecar file so re-running the same folder resumes where it left off. Pass 'remote' to fetch the mm-cg detail page through the Cloudflare worker (delegated to save_mmcg_movie).",
+#   "usage": "dev save_mmcg_movie_auto <folder> [remote]"
 # }
 dir=$1
+mode=$2                         # optional: 'remote' to fetch the mm-cg detail page through the Cloudflare worker
 
 maxAttempts=3                   # retry save_mmcg_movie on transient failures
 retryDelay=5                    # seconds to wait between attempts
@@ -57,7 +58,7 @@ for f in "$absDir"/*; do
             echo "[$current/$total] Retry $attempt/$maxAttempts (waiting ${retryDelay}s): $f"
             sleep "$retryDelay"
         fi
-        if dev save_mmcg_movie "$f"; then
+        if dev save_mmcg_movie "$f" "$mode"; then
             ok=1
             break
         fi

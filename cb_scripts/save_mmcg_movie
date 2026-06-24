@@ -1,13 +1,14 @@
 # {
 #   "name": "save_mmcg_movie",
-#   "description": "Scrape the 18av.mm-cg.com poster + title for a downloaded movie (detail URL recovered from its MmCgQueueItem Question__c), upload the poster to pCloud, summarize/describe/probe the local file, and create a Movie Item__c record. mm-cg is reachable directly, so there is no 'remote' mode (like save_javsubbed_movie).",
-#   "usage": "dev save_mmcg_movie <path/to/movie.mp4>"
+#   "description": "Scrape the 18av.mm-cg.com poster + title for a downloaded movie (detail URL recovered from its MmCgQueueItem Question__c), upload the poster to pCloud, summarize/describe/probe the local file, and create a Movie Item__c record. Pass 'remote' to fetch the mm-cg detail page through the Cloudflare worker (for regions that can't reach 18av.mm-cg.com directly); the poster CDN stays direct.",
+#   "usage": "dev save_mmcg_movie <path/to/movie.mp4> [remote]"
 # }
 filePath=$1
+mode=$2                         # optional: 'remote' to fetch the mm-cg detail page through the Cloudflare worker
 
 if [ -z "$filePath" ]; then
     echo 'Movie file path is required'
     exit 1
 fi
 
-sf mypim run script -o mypim -f ~/DevOps/cb_js/save_mmcg_movie.js "$filePath"
+sf mypim run script -o mypim -f ~/DevOps/cb_js/save_mmcg_movie.js "$filePath" "$mode"

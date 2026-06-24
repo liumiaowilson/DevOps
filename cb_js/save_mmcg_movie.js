@@ -3,6 +3,10 @@
     const PCLOUD_ROOT = '/MyPIM/Movie_Image';
     const MOVIE_ROOT = '/MyPIM/Movie';
     const HOST = 'https://18av.mm-cg.com/';
+    // The same Cloudflare worker mypimMmCgBrowser / download_mmcg use. In remote mode the
+    // mm-cg detail page (on 18av.mm-cg.com, which can be unreachable from some regions) is
+    // fetched through it; the worker runs in a working colo and injects the mm-cg Referer.
+    const MMCG_WORKER = 'https://mmcg-proxy.lockleeliumiaowilson.workers.dev';
     const QUEUE_CATEGORY_NAME = 'MmCgQueueItem';
     const MAX_UPLOAD_ATTEMPTS = 3;
     const MAX_DB_ATTEMPTS = 5;
@@ -15,10 +19,14 @@
         return;
     }
 
-    // No 'remote' mode: 18av.mm-cg.com (and its imgstream poster host) are reachable
-    // directly — the LWC only routes through a worker/proxy to dodge BROWSER CORS + the
-    // detail-page geo-strip, neither of which applies to this local node fetch. Mirrors
-    // save_javsubbed_movie / download_mmcg.
+    // 'remote' as the second script arg routes the mm-cg SITE request (the detail page on
+    // 18av.mm-cg.com) through the Cloudflare worker — for running from a region that can't
+    // reach that host directly (mirrors download_mmcg). Only the mm-cg site is proxied: the
+    // poster lives on a separate imgstream CDN that is reachable directly, so its download
+    // stays direct (like download_mmcg's streamfastpro segments).
+    const REMOTE = context.argv[1] === 'remote';
+    // Wrap an mm-cg URL through the worker when remote, else leave it untouched.
+    const viaWorker = url => REMOTE ? MMCG_WORKER + '/?url=' + encodeURIComponent(url) : url;
 
     const sleep = ms => new Promise(r => setTimeout(r, ms));
 
@@ -52,12 +60,13 @@
     // Escape a value for use inside a single-quoted SOQL string literal.
     const soqlEscape = value => String(value).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
 
-    // ---- mm-cg fetch helpers (direct local axios; no remote/compute-automation) ----
+    // ---- mm-cg fetch helpers (direct local axios; the detail page may go via the worker) ----
 
     // Fetch an mm-cg HTML page, returning the body string. identity encoding mirrors the
-    // LWC (this CDN can vary the body by Accept-Encoding).
+    // LWC (this CDN can vary the body by Accept-Encoding). In remote mode this (the mm-cg
+    // site request) is routed through the worker, which injects the mm-cg Referer itself.
     const mmGetHtml = async (url) => {
-        const resp = await context.axios.get(url, {
+        const resp = await context.axios.get(viaWorker(url), {
             headers: { 'User-Agent': USER_AGENT, 'Accept-Encoding': 'identity', 'Referer': HOST },
             timeout: 30000,
             maxRedirects: 5,
@@ -66,7 +75,8 @@
     };
 
     // Download an mm-cg image (the poster). Returns { buffer, contentType }. Covers aren't
-    // hotlink-protected, but the mm-cg Referer is sent defensively.
+    // hotlink-protected, but the mm-cg Referer is sent defensively. Always direct — the
+    // poster's imgstream CDN is reachable even in remote mode (only the mm-cg site needs the worker).
     const mmDownload = async (url) => {
         const resp = await context.axios.get(url, {
             responseType: 'arraybuffer',

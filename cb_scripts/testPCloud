@@ -1,0 +1,6 @@
+# {
+#   "name": "testPCloud",
+#   "description": "Smoke-test pCloud uploading: upload a small dummy .txt file to /MyPIM/Movie_Image and then delete it, to confirm pCloud auth/upload/delete works end to end.",
+#   "usage": "dev testPCloud"
+# }
+sf mypim run script -o mypim -f ~/DevOps/cb_js/testPCloud.js

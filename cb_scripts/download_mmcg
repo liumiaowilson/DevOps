@@ -239,6 +239,32 @@ sys.stderr.write('Total:    %.2fs in playlist; selecting %d segment(s)\n' % (tot
 print('%.6f %.6f %d' % (chosen[0][0], sum(s[2] for s in chosen), 1 if keyUrl else 0))
 PY
 
+# fetchseg.sh: download ONE segment (invoked by xargs -P, so several run at once). Keeps
+# the same per-segment retry as the old serial loop and writes seg_<index>.ts so output
+# ordering is independent of the (now out-of-order) completion order. Env in: SEG_TMPDIR,
+# SEG_UA, SEG_REFERER, SEG_MAX_ATTEMPTS. Args: <index> <duration> <url>. On final failure
+# it records the index+code in failures (rather than exiting the parent) so the caller can
+# abort cleanly after the batch; on success it appends the duration to done_durs (a short
+# O_APPEND write, atomic enough for the progress meter's running total).
+cat > "$tmpdir/fetchseg.sh" <<'SH'
+idx=$1; dur=$2; url=$3
+out=$(printf '%s/seg_%05d.ts' "$SEG_TMPDIR" "$idx")
+attempt=1
+while :; do
+    code=$(curl -s -m 60 -A "$SEG_UA" -e "$SEG_REFERER" "$url" -o "$out" -w '%{http_code}')
+    if [ "$code" = "200" ] && [ -s "$out" ]; then
+        printf '%s\n' "$dur" >> "$SEG_TMPDIR/done_durs"
+        exit 0
+    fi
+    if [ "$attempt" -ge "$SEG_MAX_ATTEMPTS" ]; then
+        printf '%s %s\n' "$idx" "$code" >> "$SEG_TMPDIR/failures"
+        exit 1
+    fi
+    attempt=$((attempt + 1))
+    sleep 1
+done
+SH
+
 # 1. Movie name from the URL's last path segment (percent-decoded), sanitized.
 path=${url%%[?#]*}
 base=${path##*/}
@@ -344,37 +370,50 @@ if [ "$hasKey" = "1" ]; then
     fi
 fi
 
-# 6b. Download each selected segment (with the mm-cg Referer) into the tmpdir, with a
-#     small per-segment retry. Shows the same percent/ETA/speed bar as the encode below,
-#     measured by media-seconds downloaded over wall time.
-echo "Downloading $segCount segment(s)..."
-i=0
-acc=0
+# 6b. Download the selected segments (with the mm-cg Referer) into the tmpdir. The CDN
+#     throttles each connection, so a single serial stream leaves most of the link idle;
+#     measurement on this network shows ~2.5x faster with a few parallel connections and a
+#     flat ceiling past ~4-8 (link/CDN per-IP cap). So fan out via xargs -P, capped at 8
+#     (override with MMCG_CONCURRENCY) — segments come straight from the streamfastpro CDN,
+#     NOT the worker, so the concurrency doesn't touch the Cloudflare worker.
+#
+#     fetchseg.sh keeps the same per-segment retry, names files seg_<index>.ts (so the
+#     out-of-order completion doesn't scramble the encode), and records failures rather
+#     than aborting mid-batch. The progress bar is driven by a foreground poll that sums
+#     the durations completed so far (over wall time) — the same percent/ETA/speed format.
+PAR=${MMCG_CONCURRENCY:-8}
 maxSegAttempts=5
-t0=$(date +%s)
+echo "Downloading $segCount segment(s) (${PAR} parallel)..."
+: > "$tmpdir/done_durs"
+: > "$tmpdir/failures"
+export SEG_TMPDIR="$tmpdir" SEG_UA="$UA" SEG_REFERER="$STREAM_REFERER" SEG_MAX_ATTEMPTS="$maxSegAttempts"
 TAB=$(printf '\t')
-while IFS="$TAB" read -r dur seg; do
-    [ -z "$seg" ] && continue
-    out=$(printf '%s/seg_%05d.ts' "$tmpdir" "$i")
-    segAttempt=1
-    while :; do
-        code=$(curl -s -m 60 -A "$UA" -e "$STREAM_REFERER" "$seg" -o "$out" -w '%{http_code}')
-        if [ "$code" = "200" ] && [ -s "$out" ]; then
-            break
-        fi
-        if [ "$segAttempt" -ge "$maxSegAttempts" ]; then
-            echo "Segment $i failed after $maxSegAttempts attempts (HTTP $code)"
-            exit 1
-        fi
-        segAttempt=$((segAttempt + 1))
-        sleep 1
-    done
-    i=$((i + 1))
+t0=$(date +%s)
+# tasks: "<index> <duration> <url>" (whitespace-separated; segment urls contain no spaces),
+# one per chosen segment, fed to xargs -n 3 so each invocation gets exactly one segment.
+( awk -F"$TAB" 'NF>=2{print n++, $1, $2}' "$tmpdir/segs.txt" |
+      xargs -P "$PAR" -n 3 sh "$tmpdir/fetchseg.sh" ) &
+dlpid=$!
+while kill -0 "$dlpid" 2>/dev/null; do
+    acc=$(awk '{s+=$1} END{printf "%.6f", s+0}' "$tmpdir/done_durs" 2>/dev/null)
     elapsed=$(( $(date +%s) - t0 )); [ "$elapsed" -lt 1 ] && elapsed=1
-    acc=$(awk "BEGIN{printf \"%.6f\", $acc + $dur}")
     spd=$(awk "BEGIN{printf \"%.6f\", $acc / $elapsed}")
     render_progress "$acc" "$selTotal" "$spd"
-done < "$tmpdir/segs.txt"
+    sleep 1
+done
+wait "$dlpid"
+if [ -s "$tmpdir/failures" ]; then
+    printf '\n'
+    echo "Segment download failed after $maxSegAttempts attempts (index http_code):"
+    cat "$tmpdir/failures" >&2
+    exit 1
+fi
+got=$(ls "$tmpdir"/seg_*.ts 2>/dev/null | wc -l | tr -d ' ')
+if [ "$got" -ne "$segCount" ]; then
+    printf '\n'
+    echo "Expected $segCount segments but only $got downloaded"
+    exit 1
+fi
 printf "\r  100.0%%  ETA 00:00            \n"
 
 # 7. Clip + encode to 480p. ffmpeg reads the LOCAL playlist (file + crypto for the AES

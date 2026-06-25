@@ -306,6 +306,9 @@ done
 #    play.php?numresolution=1080&id=<id> (Referer = the detail page), and pick the
 #    LOWEST-size rendition (downscaled to 480p below). In remote mode play.php (on the
 #    blocked mm-cg host) is fetched through the worker — MMCG_WORKER, else empty/direct.
+# 4. Fetch the top playlist (with the mm-cg Referer). The resolved stream URL carries a
+#    time-limited token, so a failed fetch re-resolves for a fresh URL rather than
+#    re-curling the stale one. Steps 3+4 share one retry loop.
 [ "$REMOTE" = "1" ] && resolveWorker="$MMCG_WORKER" || resolveWorker=""
 maxResolveAttempts=5
 resolveAttempt=1
@@ -313,26 +316,26 @@ m3u8Url=""
 while :; do
     m3u8Url=$(DETAIL_URL="$url" UA="$UA" MMCG_WORKER="$resolveWorker" node "$tmpdir/resolve.cjs" "$tmpdir/detail.html")
     if [ $? -eq 0 ] && [ -n "$m3u8Url" ]; then
-        break
+        curl -s -m 30 -A "$UA" -e "$STREAM_REFERER" "$m3u8Url" -o "$tmpdir/top.m3u8" -w '' || true
+        if [ -s "$tmpdir/top.m3u8" ]; then
+            break
+        fi
+        echo 'Failed to fetch the m3u8'
+    else
+        echo 'Could not resolve the stream'
     fi
-    echo 'Could not resolve the stream'
     if [ "$resolveAttempt" -ge "$maxResolveAttempts" ]; then
         echo "Giving up after $maxResolveAttempts attempts"
         exit 1
     fi
-    echo "Retrying the resolve ($resolveAttempt/$maxResolveAttempts)..."
+    echo "Retrying the resolve + m3u8 fetch ($resolveAttempt/$maxResolveAttempts)..."
     resolveAttempt=$((resolveAttempt + 1))
     sleep 2
 done
 echo "Stream:   $m3u8Url"
 
-# 4. Fetch the media playlist (with the mm-cg Referer). If it is a master playlist, pick
-#    the variant whose RESOLUTION height is closest to 480.
-curl -s -m 30 -A "$UA" -e "$STREAM_REFERER" "$m3u8Url" -o "$tmpdir/top.m3u8" -w '' || true
-if [ ! -s "$tmpdir/top.m3u8" ]; then
-    echo 'Failed to fetch the m3u8'
-    exit 1
-fi
+# If the top playlist is a master playlist, pick the variant whose RESOLUTION height is
+# closest to 480.
 mediaUrl="$m3u8Url"
 if grep -q 'EXT-X-STREAM-INF' "$tmpdir/top.m3u8"; then
     mediaUrl=$(python3 "$tmpdir/pickvariant.py" "$tmpdir/top.m3u8" "$m3u8Url")

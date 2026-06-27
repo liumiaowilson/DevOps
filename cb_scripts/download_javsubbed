@@ -61,6 +61,23 @@ ffmpeg_progress() {
     return ${PIPESTATUS[0]}
 }
 
+# Fetch a URL into a file, retrying while the response is empty (transient CDN
+# blips on turbovidhls return an empty body rather than an error). Args: url, outfile.
+fetch_retry() {
+    local fr_url=$1 fr_out=$2
+    local fr_attempt=1 fr_max=5
+    while :; do
+        curl -s -m 30 -A "$UA" -e "$EMB_REFERER" "$fr_url" -o "$fr_out" -w '' || true
+        [ -s "$fr_out" ] && return 0
+        if [ "$fr_attempt" -ge "$fr_max" ]; then
+            return 1
+        fi
+        echo "  Empty response; retrying ($fr_attempt/$fr_max)..." >&2
+        fr_attempt=$((fr_attempt + 1))
+        sleep 2
+    done
+}
+
 OUTDIR="$HOME/Downloads/javsubbed"
 mkdir -p "$OUTDIR/playlists" "$OUTDIR/movies"
 
@@ -118,8 +135,7 @@ echo "Stream:   $m3u8Url"
 # 4. Fetch the m3u8. If it is a master playlist (EXT-X-STREAM-INF), pick the variant
 #    whose RESOLUTION height is closest to 480 and fetch that media playlist; if it is
 #    already a media playlist, use it directly.
-curl -s -m 30 -A "$UA" -e "$EMB_REFERER" "$m3u8Url" -o "$tmpdir/top.m3u8" -w '' || true
-if [ ! -s "$tmpdir/top.m3u8" ]; then
+if ! fetch_retry "$m3u8Url" "$tmpdir/top.m3u8"; then
     echo 'Failed to fetch the m3u8'
     exit 1
 fi
@@ -154,7 +170,10 @@ PY
         echo 'Could not pick a variant from the master playlist'
         exit 1
     fi
-    curl -s -m 30 -A "$UA" -e "$EMB_REFERER" "$mediaUrl" -o "$tmpdir/media.m3u8" -w '' || true
+    if ! fetch_retry "$mediaUrl" "$tmpdir/media.m3u8"; then
+        echo 'Failed to fetch the media playlist'
+        exit 1
+    fi
 else
     cp "$tmpdir/top.m3u8" "$tmpdir/media.m3u8"
 fi

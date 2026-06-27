@@ -227,40 +227,31 @@ playlist="$OUTDIR/playlists/${movie}.m3u8"
 { echo '#EXTM3U'; cat "$tmpdir/segs.txt"; } > "$playlist"
 echo "Playlist: $playlist ($segCount segments)"
 
-# 6. Download the selected segments in parallel (PNG-wrapped TS on Google Drive; UA
-#    only, no referer/token needed) with a small per-segment retry. Each segment is
-#    written to seg_<index>.bin keyed by its playlist position, so download order does
-#    not matter — the strip/concat step below reads them back strictly by index.
-#    Concurrency defaults to 8 and is overridable via DL_JOBS.
-jobs=${DL_JOBS:-8}
-[ "$jobs" -lt 1 ] 2>/dev/null && jobs=1
-echo "Downloading $segCount segment(s) ($jobs in parallel)..."
-export SEG_TMP="$tmpdir" SEG_UA="$UA" SEG_MAX=5
-# Feed a null-delimited "index NUL url NUL ..." stream into xargs -n2 so each worker
-# receives its segment's index ($1) and URL ($2) without any delimiter parsing. Pipe
-# the workers' completion lines into awk for a live progress counter; xargs returns
-# nonzero (via PIPESTATUS) if any worker exhausts its retries.
-awk 'NF{ printf "%d%c%s%c", NR-1, 0, $0, 0 }' "$tmpdir/segs.txt" |
-xargs -0 -P "$jobs" -n2 bash -c '
-    idx=$1; seg=$2
-    out=$(printf "%s/seg_%05d.bin" "$SEG_TMP" "$idx")
-    attempt=1
+# 6. Download each selected segment (PNG-wrapped TS on Google Drive; UA only, no
+#    referer/token needed) with a small per-segment retry.
+echo "Downloading $segCount segment(s)..."
+i=0
+maxSegAttempts=5
+while IFS= read -r seg; do
+    [ -z "$seg" ] && continue
+    out=$(printf '%s/seg_%05d.bin' "$tmpdir" "$i")
+    segAttempt=1
     while :; do
-        code=$(curl -s -m 60 -A "$SEG_UA" "$seg" -o "$out" -w "%{http_code}")
-        if [ "$code" = "200" ] && [ -s "$out" ]; then echo done; exit 0; fi
-        if [ "$attempt" -ge "$SEG_MAX" ]; then
-            echo "Segment $idx failed after $SEG_MAX attempts (HTTP $code)" >&2
+        code=$(curl -s -m 60 -A "$UA" "$seg" -o "$out" -w '%{http_code}')
+        if [ "$code" = "200" ] && [ -s "$out" ]; then
+            break
+        fi
+        if [ "$segAttempt" -ge "$maxSegAttempts" ]; then
+            echo "Segment $i failed after $maxSegAttempts attempts (HTTP $code)"
             exit 1
         fi
-        attempt=$((attempt + 1)); sleep 1
+        segAttempt=$((segAttempt + 1))
+        sleep 1
     done
-' _ |
-awk -v total="$segCount" '{ c++; printf "\r  %d/%d ", c, total; fflush() } END { printf "\n" }'
-dlStatus=${PIPESTATUS[1]}
-if [ "$dlStatus" -ne 0 ]; then
-    echo 'One or more segments failed to download'
-    exit 1
-fi
+    i=$((i + 1))
+    printf '\r  %d/%d ' "$i" "$segCount"
+done < "$tmpdir/segs.txt"
+echo
 
 # 7. Strip the PNG decoy prefix from each segment and concatenate into one TS. Each
 #    chunk is a decoy PNG with the real MPEG-TS appended; strip everything before the

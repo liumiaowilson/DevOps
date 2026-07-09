@@ -306,21 +306,43 @@ done
 #    play.php?numresolution=1080&id=<id> (Referer = the detail page), and pick the
 #    LOWEST-size rendition (downscaled to 480p below). In remote mode play.php (on the
 #    blocked mm-cg host) is fetched through the worker — MMCG_WORKER, else empty/direct.
-# 4. Fetch the top playlist (with the mm-cg Referer). The resolved stream URL carries a
-#    time-limited token, so a failed fetch re-resolves for a fresh URL rather than
-#    re-curling the stale one. Steps 3+4 share one retry loop.
+# 4. Fetch the top playlist, pick the ~480p variant if it's a master playlist, and fetch
+#    the media playlist (all with the mm-cg Referer). The resolved stream URL carries a
+#    time-limited token, and the CDN sometimes answers it with a non-empty body that has
+#    NO segments (error page / empty playlist), so an attempt only counts as success once
+#    the media playlist contains at least one #EXTINF. Any failure along the way
+#    re-resolves for a fresh URL rather than re-curling the stale one; steps 3+4 share
+#    one retry loop.
 [ "$REMOTE" = "1" ] && resolveWorker="$MMCG_WORKER" || resolveWorker=""
 maxResolveAttempts=5
 resolveAttempt=1
 m3u8Url=""
+mediaUrl=""
 while :; do
+    rm -f "$tmpdir/top.m3u8" "$tmpdir/media.m3u8"
     m3u8Url=$(DETAIL_URL="$url" UA="$UA" MMCG_WORKER="$resolveWorker" node "$tmpdir/resolve.cjs" "$tmpdir/detail.html")
     if [ $? -eq 0 ] && [ -n "$m3u8Url" ]; then
         curl -s -m 30 -A "$UA" -e "$STREAM_REFERER" "$m3u8Url" -o "$tmpdir/top.m3u8" -w '' || true
         if [ -s "$tmpdir/top.m3u8" ]; then
-            break
+            mediaUrl="$m3u8Url"
+            if grep -q 'EXT-X-STREAM-INF' "$tmpdir/top.m3u8"; then
+                mediaUrl=$(python3 "$tmpdir/pickvariant.py" "$tmpdir/top.m3u8" "$m3u8Url")
+                if [ -n "$mediaUrl" ]; then
+                    curl -s -m 30 -A "$UA" -e "$STREAM_REFERER" "$mediaUrl" -o "$tmpdir/media.m3u8" -w '' || true
+                else
+                    echo 'Could not pick a variant from the master playlist'
+                fi
+            else
+                cp "$tmpdir/top.m3u8" "$tmpdir/media.m3u8"
+            fi
+            if [ -s "$tmpdir/media.m3u8" ] && grep -q '^#EXTINF' "$tmpdir/media.m3u8"; then
+                break
+            fi
+            [ -e "$tmpdir/media.m3u8" ] && echo 'Media playlist has no segments (stale/blocked stream URL?)' \
+                || echo 'Failed to fetch the media playlist'
+        else
+            echo 'Failed to fetch the m3u8'
         fi
-        echo 'Failed to fetch the m3u8'
     else
         echo 'Could not resolve the stream'
     fi
@@ -328,26 +350,11 @@ while :; do
         echo "Giving up after $maxResolveAttempts attempts"
         exit 1
     fi
-    echo "Retrying the resolve + m3u8 fetch ($resolveAttempt/$maxResolveAttempts)..."
+    echo "Retrying the resolve + playlist fetch ($resolveAttempt/$maxResolveAttempts)..."
     resolveAttempt=$((resolveAttempt + 1))
     sleep 2
 done
 echo "Stream:   $m3u8Url"
-
-# If the top playlist is a master playlist, pick the variant whose RESOLUTION height is
-# closest to 480.
-mediaUrl="$m3u8Url"
-if grep -q 'EXT-X-STREAM-INF' "$tmpdir/top.m3u8"; then
-    mediaUrl=$(python3 "$tmpdir/pickvariant.py" "$tmpdir/top.m3u8" "$m3u8Url")
-    [ -z "$mediaUrl" ] && { echo 'Could not pick a variant from the master playlist'; exit 1; }
-    curl -s -m 30 -A "$UA" -e "$STREAM_REFERER" "$mediaUrl" -o "$tmpdir/media.m3u8" -w '' || true
-else
-    cp "$tmpdir/top.m3u8" "$tmpdir/media.m3u8"
-fi
-if [ ! -s "$tmpdir/media.m3u8" ]; then
-    echo 'Failed to fetch the media playlist'
-    exit 1
-fi
 
 # 5. Select the in-range segments and build the local AES playlist + reference playlist.
 selInfo=$(python3 "$tmpdir/select.py" "$tmpdir/media.m3u8" "$mediaUrl" "$start" "$end" "$tmpdir" "$OUTDIR/playlists/${movie}.m3u8")

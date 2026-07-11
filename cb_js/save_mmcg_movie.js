@@ -248,7 +248,7 @@
             //    Look up the MmCgQueueItem CustomData record whose Name matches the slug.
             const queueName = truncateForRecordName(fileName);
             const queueResult = await withRetry('Query queue record', () => context.mypim.query(
-                "SELECT Id, Question__c FROM Item__c WHERE Type__c = 'CustomData'"
+                "SELECT Id, Question__c, Active__c FROM Item__c WHERE Type__c = 'CustomData'"
                 + " AND Parent__r.Name = '" + QUEUE_CATEGORY_NAME + "'"
                 + " AND Name = '" + soqlEscape(queueName) + "'"
                 + " ORDER BY CreatedDate DESC LIMIT 1"
@@ -419,6 +419,8 @@
                 Password__c: resolution,
                 Show_In_UI__c: true,
                 End_Date__c: new Date().toISOString(),
+                // The browser's Voted? toggle, carried on the queue record as Active__c.
+                Visited__c: queueRecord.Active__c === true ? 1 : 0,
             };
             // Only set File_1__c when the poster was successfully uploaded; a skipped poster
             // leaves it unset rather than pointing at a pCloud file that was never created.

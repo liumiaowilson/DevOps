@@ -3,4 +3,4 @@
 #   "description": "Generate a sfdx url",
 #   "usage": "dev generateSfdxUrl"
 # }
-sf org display -u $DefaultAlias --verbose --json | jq -r '.result.sfdxAuthUrl'
+sf org auth show-sfdx-auth-url -o $DefaultAlias --json | jq -r '.result.sfdxAuthUrl'

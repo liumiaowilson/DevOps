@@ -242,7 +242,84 @@
             const fileName = path.basename(resolvedPath, path.extname(resolvedPath));
             cmd.log('Movie: ' + fileName);
 
-            // 1. Recover the detail URL from the queue. mm-cg detail URLs
+            // The minutes-long local python steps (meta/frames/summarize/describe) run
+            // FIRST, before any Salesforce or network request: SF calls issued after that
+            // long an idle were landing on dead connections and failing with generic
+            // "fetch failed" errors. Front-loading the local work lets every network call
+            // (queue lookup, scrape, pCloud, record create) run back-to-back at the end.
+
+            // 1. Meta — probe duration + resolution from the local file (metaMovie logic).
+            cmd.log('Probing metadata...');
+            const metaResult = cp.spawnSync('python3', [ pyScript('meta-movie.py'), resolvedPath, ], {
+                stdio: [ 'ignore', 'pipe', 'inherit', ],
+            });
+            if(metaResult.status !== 0) {
+                throw new Error('meta-movie.py exited with status ' + metaResult.status);
+            }
+            let meta;
+            try {
+                meta = JSON.parse(metaResult.stdout.toString().trim());
+            }
+            catch(e) {
+                throw new Error('Failed to parse meta-movie.py output: ' + e.message);
+            }
+            const duration = Math.round(Number(meta.duration_seconds));
+            const resolution = meta.resolution;
+            if(!Number.isFinite(duration) || duration <= 0) {
+                throw new Error('Invalid duration_seconds in meta-movie.py output: ' + meta.duration_seconds);
+            }
+            if(!resolution) {
+                throw new Error('Missing resolution in meta-movie.py output');
+            }
+            cmd.log('Meta: ' + duration + 's, ' + resolution);
+
+            // 2. Summarize — extract frames then build summary.txt (summarizeMovie logic).
+            const framesDir = fs.mkdtempSync(path.join(os.tmpdir(), 'save_mmcg_movie_'));
+            let summary;
+            let description;
+            try {
+                cmd.log('Extracting frames into ' + framesDir);
+                const frameResult = cp.spawnSync('python3', [ pyScript('frame-movie.py'), resolvedPath, framesDir, ], { stdio: 'inherit' });
+                if(frameResult.status !== 0) {
+                    throw new Error('frame-movie.py exited with status ' + frameResult.status);
+                }
+
+                cmd.log('Summarizing frames...');
+                const compareResult = cp.spawnSync('python3', [ pyScript('frame-compare.py'), framesDir, ], {
+                    stdio: [ 'ignore', 'inherit', 'inherit', ],
+                });
+                if(compareResult.status !== 0) {
+                    throw new Error('frame-compare.py exited with status ' + compareResult.status);
+                }
+
+                const summaryPath = path.join(framesDir, 'summary.txt');
+                if(!fs.existsSync(summaryPath)) {
+                    throw new Error('frame-compare.py did not produce summary.txt');
+                }
+                summary = fs.readFileSync(summaryPath, 'utf8');
+                if(!summary || !summary.trim()) {
+                    throw new Error('summary.txt is empty');
+                }
+
+                // 3. Describe — condense the summary into a description (describeMovie logic).
+                cmd.log('Describing movie...');
+                const describeResult = cp.spawnSync('python3', [ pyScript('describe-movie.py'), ], {
+                    input: summary,
+                    stdio: [ 'pipe', 'pipe', 'inherit', ],
+                });
+                if(describeResult.status !== 0) {
+                    throw new Error('describe-movie.py exited with status ' + describeResult.status);
+                }
+                description = describeResult.stdout.toString().trim();
+                if(!description) {
+                    throw new Error('describe-movie.py returned empty output');
+                }
+            }
+            finally {
+                try { fs.rmSync(framesDir, { recursive: true, force: true }); } catch(e) { /* best effort */ }
+            }
+
+            // 4. Recover the detail URL from the queue. mm-cg detail URLs
             //    (…/chinese_content/<id>/<slug>.html) need the numeric id, which can't be
             //    rebuilt from the slug, so the browser stores the full URL in Question__c.
             //    Look up the MmCgQueueItem CustomData record whose Name matches the slug.
@@ -263,14 +340,12 @@
             }
             cmd.log('Page: ' + detailUrl);
 
-            // 2. Cover image — scrape the poster URL + title from the detail page, download
-            //    it, and upload it to pCloud /MyPIM/Movie_Image/<fileName>.jpg. Run this
-            //    FIRST, before the minutes-long local python steps, so a 404/empty scrape
-            //    surfaces early instead of after all that work. Best-effort: a missing poster
-            //    must NOT block the Movie record — on failure we log a warning, leave
-            //    File_1__c unset, and still save. The page title (used for the record Name) is
-            //    captured here too; if even the page fetch fails we fall back to the slug.
-            //    Retry a few times for transient hiccups.
+            // 5. Cover image — scrape the poster URL + title from the detail page, download
+            //    it, and upload it to pCloud /MyPIM/Movie_Image/<fileName>.jpg. Best-effort:
+            //    a missing poster must NOT block the Movie record — on failure we log a
+            //    warning, leave File_1__c unset, and still save. The page title (used for the
+            //    record Name) is captured here too; if even the page fetch fails we fall back
+            //    to the slug. Retry a few times for transient hiccups.
             let file1 = null;
             // Default the movie path to the raw fileName; when a poster IS uploaded, pCloud
             // may rewrite the filename and we re-derive this from the stored name below.
@@ -334,76 +409,6 @@
                         await sleep(RETRY_DELAY_MS);
                     }
                 }
-            }
-
-            // 3. Meta — probe duration + resolution from the local file (metaMovie logic).
-            cmd.log('Probing metadata...');
-            const metaResult = cp.spawnSync('python3', [ pyScript('meta-movie.py'), resolvedPath, ], {
-                stdio: [ 'ignore', 'pipe', 'inherit', ],
-            });
-            if(metaResult.status !== 0) {
-                throw new Error('meta-movie.py exited with status ' + metaResult.status);
-            }
-            let meta;
-            try {
-                meta = JSON.parse(metaResult.stdout.toString().trim());
-            }
-            catch(e) {
-                throw new Error('Failed to parse meta-movie.py output: ' + e.message);
-            }
-            const duration = Math.round(Number(meta.duration_seconds));
-            const resolution = meta.resolution;
-            if(!Number.isFinite(duration) || duration <= 0) {
-                throw new Error('Invalid duration_seconds in meta-movie.py output: ' + meta.duration_seconds);
-            }
-            if(!resolution) {
-                throw new Error('Missing resolution in meta-movie.py output');
-            }
-            cmd.log('Meta: ' + duration + 's, ' + resolution);
-
-            // 4. Summarize — extract frames then build summary.txt (summarizeMovie logic).
-            const framesDir = fs.mkdtempSync(path.join(os.tmpdir(), 'save_mmcg_movie_'));
-            let summary;
-            try {
-                cmd.log('Extracting frames into ' + framesDir);
-                const frameResult = cp.spawnSync('python3', [ pyScript('frame-movie.py'), resolvedPath, framesDir, ], { stdio: 'inherit' });
-                if(frameResult.status !== 0) {
-                    throw new Error('frame-movie.py exited with status ' + frameResult.status);
-                }
-
-                cmd.log('Summarizing frames...');
-                const compareResult = cp.spawnSync('python3', [ pyScript('frame-compare.py'), framesDir, ], {
-                    stdio: [ 'ignore', 'inherit', 'inherit', ],
-                });
-                if(compareResult.status !== 0) {
-                    throw new Error('frame-compare.py exited with status ' + compareResult.status);
-                }
-
-                const summaryPath = path.join(framesDir, 'summary.txt');
-                if(!fs.existsSync(summaryPath)) {
-                    throw new Error('frame-compare.py did not produce summary.txt');
-                }
-                summary = fs.readFileSync(summaryPath, 'utf8');
-                if(!summary || !summary.trim()) {
-                    throw new Error('summary.txt is empty');
-                }
-
-                // 5. Describe — condense the summary into a description (describeMovie logic).
-                cmd.log('Describing movie...');
-                const describeResult = cp.spawnSync('python3', [ pyScript('describe-movie.py'), ], {
-                    input: summary,
-                    stdio: [ 'pipe', 'pipe', 'inherit', ],
-                });
-                if(describeResult.status !== 0) {
-                    throw new Error('describe-movie.py exited with status ' + describeResult.status);
-                }
-                var description = describeResult.stdout.toString().trim();
-                if(!description) {
-                    throw new Error('describe-movie.py returned empty output');
-                }
-            }
-            finally {
-                try { fs.rmSync(framesDir, { recursive: true, force: true }); } catch(e) { /* best effort */ }
             }
 
             // 6. Create the Movie Item__c record with everything populated.

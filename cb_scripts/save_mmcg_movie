@@ -1,6 +1,6 @@
 # {
 #   "name": "save_mmcg_movie",
-#   "description": "Scrape the 18av.mm-cg.com poster + title for a downloaded movie (detail URL recovered from its MmCgQueueItem Question__c), upload the poster to pCloud, summarize/describe/probe the local file, and create a Movie Item__c record. Pass 'remote' to fetch the mm-cg detail page through the Cloudflare worker (for regions that can't reach 18av.mm-cg.com directly); the poster CDN stays direct.",
+#   "description": "Probe/summarize/describe the local movie file first (the slow local steps), then run all network requests back-to-back: scrape the 18av.mm-cg.com poster + title (detail URL recovered from its MmCgQueueItem Question__c), upload the poster to pCloud, and create a Movie Item__c record. Pass 'remote' to fetch the mm-cg detail page through the Cloudflare worker (for regions that can't reach 18av.mm-cg.com directly); the poster CDN stays direct.",
 #   "usage": "dev save_mmcg_movie <path/to/movie.mp4> [remote]"
 # }
 filePath=$1

@@ -44,12 +44,12 @@ for f in "$absDir"/*; do
 
     if grep -Fxq "$f" "$progressFile"; then
         skipped=$((skipped + 1))
-        echo "[$current/$total] Skipping (already done): $f"
+        echo "[$current/$total] $(date '+%Y-%m-%d %H:%M:%S') Skipping (already done): $f"
         continue
     fi
 
     echo ""
-    echo "[$current/$total] Saving: $f"
+    echo "[$current/$total] $(date '+%Y-%m-%d %H:%M:%S') Saving: $f"
 
     attempt=1
     ok=0

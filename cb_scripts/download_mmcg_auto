@@ -28,8 +28,18 @@ retry() {
 
 queryOldest() {
     sf data query \
-        -q "SELECT Id, Question__c, Answer__c FROM Item__c WHERE Type__c = 'CustomData' AND Parent__r.Name = 'MmCgQueueItem' AND Username__c = 'Pending' ORDER BY CreatedDate ASC LIMIT 1" \
+        -q "SELECT Id, Name, Question__c, Answer__c FROM Item__c WHERE Type__c = 'CustomData' AND Parent__r.Name = 'MmCgQueueItem' AND Username__c = 'Pending' ORDER BY CreatedDate ASC LIMIT 1" \
         -o "$alias" --json
+}
+
+queryDuplicates() {
+    sf data query \
+        -q "SELECT Id FROM Item__c WHERE Type__c = 'CustomData' AND Parent__r.Name = 'MmCgQueueItem' AND Name = '$1' AND Id != '$2'" \
+        -o "$alias" --json
+}
+
+deleteRecord() {
+    sf data delete record -s Item__c -i "$1" -o "$alias" --json
 }
 
 markDone() {
@@ -54,10 +64,28 @@ while [ "$i" -lt "$N" ]; do
     fi
 
     recordId=$(printf '%s' "$result" | jq -r '.result.records[0].Id')
+    recordName=$(printf '%s' "$result" | jq -r '.result.records[0].Name')
     mmcg_url=$(printf '%s' "$result" | jq -r '.result.records[0].Question__c')
     answer=$(printf '%s' "$result" | jq -r '.result.records[0].Answer__c')
 
-    echo "Record:   $recordId"
+    echo "Record:   $recordId ($recordName)"
+
+    # The browser can enqueue the same video more than once; keep only the record
+    # being processed and delete any other QueueItems sharing its Name. A failure
+    # here just means a possible re-download later, so warn instead of aborting.
+    escName=$(printf '%s' "$recordName" | sed "s/'/\\\\'/g")
+    dupes=$(retry queryDuplicates "$escName" "$recordId")
+    if [ $? -eq 0 ]; then
+        for dupId in $(printf '%s' "$dupes" | jq -r '.result.records[].Id'); do
+            if retry deleteRecord "$dupId"; then
+                echo "Deleted duplicate: $dupId (Name: $recordName)"
+            else
+                echo "Warning: failed to delete duplicate $dupId; continuing."
+            fi
+        done
+    else
+        echo "Warning: duplicate check query failed; continuing."
+    fi
 
     # mm-cg detail URLs (…/chinese_content/<id>/<slug>.html) need the numeric id, which
     # isn't derivable from the slug, so the browser stores the full URL in Question__c.

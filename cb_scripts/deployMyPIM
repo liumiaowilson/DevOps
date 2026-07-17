@@ -20,6 +20,9 @@ for f in $files; do
     rel=${f#src/}
 
     case $rel in
+        objects/*)
+            echo "Skipped $rel (object changes are not copied)"
+            ;;
         lwc/*/* | aura/*/*)
             bundleType=`echo $rel | cut -d/ -f1`
             bundleName=`echo $rel | cut -d/ -f2`

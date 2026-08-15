@@ -391,33 +391,60 @@ fi
 #     out-of-order completion doesn't scramble the encode), and records failures rather
 #     than aborting mid-batch. The progress bar is driven by a foreground poll that sums
 #     the durations completed so far (over wall time) — the same percent/ETA/speed format.
+#
+#     A handful of segments can still exhaust their in-process attempts on a long run —
+#     typically http_code 000 (connection reset / 60s timeout) once the CDN starts
+#     throttling a saturated fan-out. Losing a whole 400-segment download to one such
+#     segment is wasteful, so the batch runs in ROUNDS: after a round, only the segments
+#     that failed are re-queued, with the concurrency halved each time (down to 1) to back
+#     off the per-IP throttle. Rounds override: MMCG_SEG_ROUNDS.
 PAR=${MMCG_CONCURRENCY:-8}
 maxSegAttempts=5
+maxSegRounds=${MMCG_SEG_ROUNDS:-3}
 echo "Downloading $segCount segment(s) (${PAR} parallel)..."
 : > "$tmpdir/done_durs"
-: > "$tmpdir/failures"
 export SEG_TMPDIR="$tmpdir" SEG_UA="$UA" SEG_REFERER="$STREAM_REFERER" SEG_MAX_ATTEMPTS="$maxSegAttempts"
 TAB=$(printf '\t')
 t0=$(date +%s)
 # tasks: "<index> <duration> <url>" (whitespace-separated; segment urls contain no spaces),
 # one per chosen segment, fed to xargs -n 3 so each invocation gets exactly one segment.
-( awk -F"$TAB" 'NF>=2{print n++, $1, $2}' "$tmpdir/segs.txt" |
-      xargs -P "$PAR" -n 3 sh "$tmpdir/fetchseg.sh" ) &
-dlpid=$!
-while kill -0 "$dlpid" 2>/dev/null; do
-    acc=$(awk '{s+=$1} END{printf "%.6f", s+0}' "$tmpdir/done_durs" 2>/dev/null)
-    elapsed=$(( $(date +%s) - t0 )); [ "$elapsed" -lt 1 ] && elapsed=1
-    spd=$(awk "BEGIN{printf \"%.6f\", $acc / $elapsed}")
-    render_progress "$acc" "$selTotal" "$spd"
-    sleep 1
-done
-wait "$dlpid"
-if [ -s "$tmpdir/failures" ]; then
+# tasks_all.txt is the full list (kept for re-queueing); tasks.txt is the current round's.
+awk -F"$TAB" 'NF>=2{print n++, $1, $2}' "$tmpdir/segs.txt" > "$tmpdir/tasks_all.txt"
+cp "$tmpdir/tasks_all.txt" "$tmpdir/tasks.txt"
+segRound=1
+segPar=$PAR
+while :; do
+    : > "$tmpdir/failures"
+    ( xargs -P "$segPar" -n 3 sh "$tmpdir/fetchseg.sh" < "$tmpdir/tasks.txt" ) &
+    dlpid=$!
+    while kill -0 "$dlpid" 2>/dev/null; do
+        acc=$(awk '{s+=$1} END{printf "%.6f", s+0}' "$tmpdir/done_durs" 2>/dev/null)
+        elapsed=$(( $(date +%s) - t0 )); [ "$elapsed" -lt 1 ] && elapsed=1
+        spd=$(awk "BEGIN{printf \"%.6f\", $acc / $elapsed}")
+        render_progress "$acc" "$selTotal" "$spd"
+        sleep 1
+    done
+    wait "$dlpid"
+    [ -s "$tmpdir/failures" ] || break
     printf '\n'
-    echo "Segment download failed after $maxSegAttempts attempts (index http_code):"
+    failedCount=$(grep -c . "$tmpdir/failures")
+    echo "$failedCount segment(s) failed after $maxSegAttempts attempts (index http_code):"
     cat "$tmpdir/failures" >&2
-    exit 1
-fi
+    if [ "$segRound" -ge "$maxSegRounds" ]; then
+        echo "Giving up after $maxSegRounds download round(s)"
+        exit 1
+    fi
+    # Re-queue only the failed indices, at half the concurrency (min 1).
+    awk 'NR==FNR{f[$1]=1;next} f[$1]' "$tmpdir/failures" "$tmpdir/tasks_all.txt" > "$tmpdir/tasks.txt"
+    if [ ! -s "$tmpdir/tasks.txt" ]; then
+        echo 'Could not map the failed segments back to their urls'
+        exit 1
+    fi
+    segRound=$((segRound + 1))
+    segPar=$(( segPar / 2 )); [ "$segPar" -lt 1 ] && segPar=1
+    echo "Retrying $failedCount segment(s) (round $segRound/$maxSegRounds, ${segPar} parallel)..."
+    sleep 3
+done
 got=$(ls "$tmpdir"/seg_*.ts 2>/dev/null | wc -l | tr -d ' ')
 if [ "$got" -ne "$segCount" ]; then
     printf '\n'

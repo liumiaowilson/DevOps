@@ -1,6 +1,6 @@
 # {
 #   "name": "download_mmcg_auto",
-#   "description": "Process the oldest N Pending MmCgQueueItem CustomData records from the mypim org: for each, take the 18av.mm-cg.com detail URL from Question__c and the clip range (start_time/end_time) from Answer__c, run dev download_mmcg on it, and mark the record Username__c='Done' on success. Aborts when the queue is empty or a step fails. Pass 'remote' to fetch the detail page through the Cloudflare worker (delegated to download_mmcg).",
+#   "description": "Process the oldest N Pending MmCgQueueItem CustomData records from the mypim org: for each, take the 18av.mm-cg.com detail URL from Question__c and the clip range (start_time/end_time) from Answer__c, run dev download_mmcg on it (retrying the whole download up to MMCG_DL_ATTEMPTS times, default 3), and mark the record Username__c='Done' on success. Aborts when the queue is empty or a step fails. Pass 'remote' to fetch the detail page through the Cloudflare worker (delegated to download_mmcg).",
 #   "usage": "dev download_mmcg_auto [N] [remote]"
 # }
 alias=mypim
@@ -110,12 +110,24 @@ while [ "$i" -lt "$N" ]; do
     echo "URL:      $mmcg_url"
     echo "Clip:     ${start}s -> ${end}s"
 
-    sh "$ScriptsDir/download_mmcg" "$mmcg_url" "$start" "$end" "$mode"
-    dl_rc=$?
-    if [ "$dl_rc" -ne 0 ]; then
-        echo "download_mmcg failed for $mmcg_url; aborting (record kept)."
-        exit 1
-    fi
+    # download_mmcg already retries internally at every step (detail page, resolve,
+    # per-segment, failed-segment rounds), so a non-zero exit here means a whole run went
+    # bad — most often a stream url whose token went stale mid-download, which only a fresh
+    # resolve fixes. Re-run the whole thing a couple of times before giving up on the record.
+    maxDlAttempts=${MMCG_DL_ATTEMPTS:-3}
+    dlAttempt=1
+    while :; do
+        sh "$ScriptsDir/download_mmcg" "$mmcg_url" "$start" "$end" "$mode"
+        dl_rc=$?
+        [ "$dl_rc" -eq 0 ] && break
+        if [ "$dlAttempt" -ge "$maxDlAttempts" ]; then
+            echo "download_mmcg failed for $mmcg_url after $maxDlAttempts attempt(s); aborting (record kept)."
+            exit 1
+        fi
+        echo "download_mmcg failed for $mmcg_url (attempt $dlAttempt/$maxDlAttempts); retrying in 10s..."
+        dlAttempt=$((dlAttempt + 1))
+        sleep 10
+    done
 
     if ! retry markDone "$recordId"; then
         echo "Failed to mark record $recordId Done after retries; aborting."

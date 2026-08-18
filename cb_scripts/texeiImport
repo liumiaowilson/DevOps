@@ -1,10 +1,11 @@
 # {
 #   "name": "texeiImport",
 #   "description": "Import all practifi component jsons using texei",
-#   "usage": "dev texeiImport [folderName]"
+#   "usage": "dev texeiImport [folderName] [orgAlias]"
 # }
 repoDir="$(pwd)"
 folderName="$1"
+orgAlias="${2:-$DefaultAlias}"
 
 if [ -n "$folderName" ]; then
     importDir="./data/texei/$folderName"
@@ -23,30 +24,30 @@ else
 fi
 
 echo "🗑️  Deleting all Component_Relation__c records..."
-sf data query -o $DefaultAlias --query "SELECT Id FROM practifi__Component_Relation__c" --result-format csv | tail -n +2 > /tmp/comp_rel_ids.csv
+sf data query -o $orgAlias --query "SELECT Id FROM practifi__Component_Relation__c" --result-format csv | tail -n +2 > /tmp/comp_rel_ids.csv
 if [ -s /tmp/comp_rel_ids.csv ]; then
     echo "Id" > /tmp/comp_rel_delete.csv && cat /tmp/comp_rel_ids.csv >> /tmp/comp_rel_delete.csv
-    sf data delete bulk -o $DefaultAlias --sobject practifi__Component_Relation__c --file /tmp/comp_rel_delete.csv --wait 30
+    sf data delete bulk -o $orgAlias --sobject practifi__Component_Relation__c --file /tmp/comp_rel_delete.csv --wait 30
 else
     echo "   No records found."
 fi
 
 echo "🔓 Unlocking all Component__c records..."
-sf data query -o $DefaultAlias --query "SELECT Id FROM practifi__Component__c" --result-format csv | tail -n +2 > /tmp/comp_ids.csv
+sf data query -o $orgAlias --query "SELECT Id FROM practifi__Component__c" --result-format csv | tail -n +2 > /tmp/comp_ids.csv
 if [ -s /tmp/comp_ids.csv ]; then
     awk 'BEGIN{print "Id,practifi__Locked__c"} {print $0",false"}' /tmp/comp_ids.csv > /tmp/comp_unlock.csv
-    sf data upsert bulk -o $DefaultAlias --sobject practifi__Component__c --file /tmp/comp_unlock.csv --external-id Id --wait 30
+    sf data upsert bulk -o $orgAlias --sobject practifi__Component__c --file /tmp/comp_unlock.csv --external-id Id --wait 30
 
     echo "🗑️  Deleting all Component__c records..."
     echo "Id" > /tmp/comp_delete.csv && cat /tmp/comp_ids.csv >> /tmp/comp_delete.csv
-    sf data delete bulk -o $DefaultAlias --sobject practifi__Component__c --file /tmp/comp_delete.csv --wait 30
+    sf data delete bulk -o $orgAlias --sobject practifi__Component__c --file /tmp/comp_delete.csv --wait 30
 else
     echo "   No records found."
 fi
 
 cd $repoDir
 echo "📥 Importing from $importDir..."
-sf texei data import -o $DefaultAlias --inputdir $importDir
+sf texei data import -o $orgAlias --inputdir $importDir
 
 if [ -z "$folderName" ]; then
     echo "🧹 Cleaning up pipeline folder..."

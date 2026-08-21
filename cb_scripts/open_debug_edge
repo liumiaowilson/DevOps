@@ -1,0 +1,34 @@
+# {
+#   "name": "open_debug_edge",
+#   "description": "Open the default org in debug edge browser",
+#   "usage": "dev open_debug_edge"
+# }
+
+PIDFILE="$HOME/.edge-debug-profile/.pid"
+
+if ! [ -f "$PIDFILE" ] || ! kill -0 "$(cat "$PIDFILE")" 2>/dev/null; then
+  echo "Debug Edge is not running. Starting it..."
+  source "$(dirname "$0")/start_debug_edge"
+  sleep 1
+fi
+
+alias=$1
+
+if [ -z $alias ]; then
+    alias=$DefaultAlias
+fi
+
+url=$(sf org open -o $alias --url-only 2>/dev/null | grep -o 'https://[^ ]*')
+echo "$url"
+
+EDGE="/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge"
+
+if [ ! -x "$EDGE" ]; then
+  echo "✗ Microsoft Edge not found at $EDGE"
+  exit 1
+fi
+
+"$EDGE" \
+  --user-data-dir="$HOME/.edge-debug-profile" \
+  --unsafely-disable-devtools-self-xss-warnings \
+  "$url" &>/dev/null &

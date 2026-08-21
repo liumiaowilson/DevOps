@@ -1,0 +1,33 @@
+#!/bin/bash
+PIDFILE="$HOME/.edge-debug-profile/.pid"
+
+if [ -f "$PIDFILE" ] && kill -0 "$(cat "$PIDFILE")" 2>/dev/null; then
+  echo "Debug Edge is already running (PID $(cat "$PIDFILE"))"
+  exit 1
+fi
+
+# Persistent profile — dedicated dir so the debug port is never blocked by a normal
+# Edge instance. Never wiped: profile settings, logins and extensions are kept.
+# Seed DevTools dock preference on first run only, so later edits are preserved.
+PROFILE="$HOME/.edge-debug-profile"
+if [ ! -e "$PROFILE/Default/Preferences" ]; then
+  mkdir -p "$PROFILE/Default"
+  echo '{"devtools":{"preferences":{"currentDockState":"\"bottom\""}}}' \
+    > "$PROFILE/Default/Preferences"
+fi
+
+EDGE="/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge"
+
+if [ ! -x "$EDGE" ]; then
+  echo "✗ Microsoft Edge not found at $EDGE"
+  exit 1
+fi
+
+"$EDGE" \
+  --remote-debugging-port=9222 \
+  --user-data-dir="$PROFILE" \
+  --unsafely-disable-devtools-self-xss-warnings \
+  --no-first-run \
+  --start-maximized &>/dev/null &
+echo $! > "$PROFILE/.pid"
+echo "Debug Edge started (PID $!)"
